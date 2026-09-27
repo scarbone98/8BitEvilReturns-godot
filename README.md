@@ -5,6 +5,8 @@ survival game for the Scareathon arcade. It uses portrait 9:16 and GDScript,
 and exports to the web without threads, so it runs on iOS Safari and GitHub
 Pages.
 
+Play: https://scarbone98.github.io/8BitEvilReturns-godot/
+
 This version was rebuilt from the compiled Unity WebGL build
 (`scarbone98/8BitEvilReturnsBuild`), not from the Unity source. Anything marked
 **(orig)** in `src/autoload/db.gd` comes straight from the build. Everything
@@ -14,6 +16,7 @@ else is inferred and still needs checking against the Plastic SCM source.
 
 ```sh
 godot4 --path .                 # play in the editor/desktop
+./tools/publish_pages.sh        # build + push to gh-pages (live site)
 ./tools/build_web.sh            # export to build/web
 cd build/web && python3 -m http.server 8791
 ```
