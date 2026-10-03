@@ -481,6 +481,9 @@ func _show_waiting() -> void:
 ## The card picker. on_pick(id) is called once with the chosen id.
 func show_level_up(options: Array, on_pick: Callable) -> void:
 	var box := _panel("LEVEL UP!")
+	var hand := HandMan.new()
+	box.add_child(hand)
+	box.move_child(hand, 0)
 	box.add_child(UI.label("Choose one", 8, UI.DIM))
 	var first: Button
 	var chosen := [false]
@@ -494,8 +497,23 @@ func show_level_up(options: Array, on_pick: Callable) -> void:
 		if first == null:
 			first = b
 	first.call_deferred("grab_focus")
+	# The hand reads out whichever card you move to. Hooked up after the first
+	# card's automatic focus so the opening one-liner gets its moment.
+	(func():
+		for i in options.size():
+			var card: Button = box.get_child(box.get_child_count() - options.size() + i)
+			var line := _card_line(options[i])
+			card.focus_entered.connect(func(): hand.say(line))
+			card.mouse_entered.connect(func(): hand.say(line))).call_deferred()
 	if autoplay:
 		first.call_deferred("emit_signal", "pressed")
+
+## What the hand man says about a card: the item's own quote if it has one.
+func _card_line(id: String) -> String:
+	var d: Dictionary = Db.upgrade_def(id)
+	if d.has("quote"):
+		return '"%s"' % d.quote
+	return d.get("desc", "")
 
 func _upgrade_card(id: String, on_pick: Callable) -> Button:
 	var d: Dictionary = Db.upgrade_def(id)
@@ -565,6 +583,9 @@ func _open_chest(h) -> void:
 		show_chest_note(gained)
 		return
 	var box := _panel("TREASURE!")
+	var hand := HandMan.new(preload("res://src/data/quips.gd").TREASURE)
+	box.add_child(hand)
+	box.move_child(hand, 0)
 	for g in gained:
 		var d: Dictionary = Db.upgrade_def(g[0])
 		var row := HBoxContainer.new()

@@ -1,13 +1,13 @@
 extends RefCounted
 ## Playable heroes. Unlock with silver (`cost`) or a feat (`feat`, see
 ## progression.gd). Monsters reuse their enemy sheets; `scale` shrinks big art.
-## The four humans' starting weapons match Mystery Crypt.
+## Joe starts with the CrossBow and Matt with the Claw (the user's call).
 
 const CHARACTERS := {
 	"joe": {"name": "Joe", "perk": "All-rounder. +10% damage.", "run": "run_joe", "idle": "idle_joe",
-		"weapon": "claw", "stats": {"might": 0.10}, "cost": 0},
+		"weapon": "crossbow", "stats": {"might": 0.10}, "cost": 0},
 	"matt": {"name": "Matt", "perk": "Tough. +30 max health.", "run": "run_matt", "idle": "idle_matt",
-		"weapon": "cursed_sword", "stats": {"max_hp": 30.0}, "cost": 150},
+		"weapon": "claw", "stats": {"max_hp": 30.0}, "cost": 150},
 	"alex": {"name": "Alex", "perk": "Ranged. Projectiles fly 20% faster.", "run": "run_alex", "idle": "idle_alex",
 		"weapon": "crossbow", "stats": {"proj_speed": 0.2}, "cost": 300},
 	"jon": {"name": "Jon", "perk": "Lucky. More candy, more silver.", "run": "run_jon", "idle": "idle_jon",
