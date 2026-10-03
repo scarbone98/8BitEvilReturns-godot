@@ -26,7 +26,7 @@ const DELAY_MAX := 0.15
 const CHUNK_BYTES := 7000  # the server refuses packets over 8 KB
 # Bump when the snapshot format or messages change, so a player on an old page
 # (or an old server copy) is told to reload instead of seeing garbage.
-const PROTOCOL := 4
+const PROTOCOL := 5
 
 var run
 var _clock := 0.0
@@ -121,6 +121,7 @@ func send_over(seat: int, summary: Dictionary) -> void:
 
 func _send_snapshots() -> void:
 	_seq = (_seq + 1) & 0xFFFF
+	# (fresh damage numbers are cleared once every guest's snapshot is built)
 	for seat in run.heroes:
 		var h = run.heroes[seat]
 		if h.mode == "local":
@@ -129,6 +130,7 @@ func _send_snapshots() -> void:
 			_inv_sent[seat] = h.inv_rev
 			Net.send_json(seat, {"t": "inv", "inv": h.inventory()})
 		_send_snapshot_to(seat, h)
+	run.popups.fresh.clear()
 
 func _send_snapshot_to(seat: int, h) -> void:
 	var origin: Vector2 = h.position
@@ -171,6 +173,17 @@ func _send_snapshot_to(seat: int, h) -> void:
 	for p in picks:
 		b.put_u8(run.pickups.mirror_code(p))
 		_put_off(b, p.pos, origin)
+	# Damage numbers made since the last snapshot, in their view.
+	var nums := []
+	for n in run.popups.fresh:
+		if view.has_point(n[0]):
+			nums.append(n)
+			if nums.size() >= 60:
+				break
+	b.put_u8(nums.size())
+	for n in nums:
+		b.put_u16(mini(roundi(n[1]), 65535))
+		_put_off(b, n[0], origin)
 	Net.send(seat, K_SNAP, b.data_array)
 
 	# E: enemies in view, chunked
@@ -390,6 +403,11 @@ func _read_snapshot(data: PackedByteArray) -> void:
 	for k in np:
 		var code := b.get_u8()
 		pickups.append([code, _off(b, _origin)])
+	var nn := b.get_u8()
+	for k in nn:
+		var amount := b.get_u16()
+		run.popups.add(_off(b, _origin), amount)
+	_nums_seen += nn
 	_building = {"t": t, "heroes": heroes, "pickups": pickups, "enemies": [], "ops": []}
 
 func _read_enemies(data: PackedByteArray) -> void:
@@ -553,6 +571,7 @@ func _interpolate(delta: float) -> void:
 				_ring_off = maxf(_ring_off, (op[1] - run.player.position).length())
 
 # Test bots: the biggest frame-to-frame jump of any enemy, reported every 10s.
+var _nums_seen := 0
 var _ring_seen := 0
 var _ring_off := 0.0
 var _last_pos := {}
@@ -568,7 +587,8 @@ func _measure(list: Array) -> void:
 	_last_pos = now
 	_jump_clock += get_process_delta_time()
 	if _jump_clock >= 10.0:
-		print("[smooth] biggest enemy jump between frames: %.1f px, buffer %d ms; pulse rings drawn %d, furthest from our hero %.1f px" % [_max_jump, roundi(render_delay * 1000.0), _ring_seen, _ring_off])
+		print("[smooth] biggest enemy jump between frames: %.1f px, buffer %d ms; pulse rings drawn %d, furthest from our hero %.1f px; damage numbers received %d" % [_max_jump, roundi(render_delay * 1000.0), _ring_seen, _ring_off, _nums_seen])
+		_nums_seen = 0
 		_ring_seen = 0
 		_ring_off = 0.0
 		_jump_clock = 0.0

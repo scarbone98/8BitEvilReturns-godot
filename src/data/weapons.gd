@@ -56,7 +56,7 @@ const WEAPONS := {
 	},
 	"fireball": {
 		"name": "Fireball", "quote": "FLAMIN HOT", "icon": "fireball_icon",
-		"behavior": "shooter", "sheet": "fireball", "aim": "nearest", "explode": 28.0,
+		"behavior": "shooter", "sheet": "fireball", "aim": "facing", "explode": 28.0,  # fires where you're heading
 		"base": {"cooldown": 2.0, "damage": 15.0, "speed": 20.0 * UNIT * 0.5, "pierce": 1, "range": 220.0},  # (orig) 2 / 15 / 20
 		"levels": [
 			{"desc": "+5 damage", "damage": 5.0},
@@ -414,7 +414,7 @@ const WEAPONS := {
 		"evolution": true, "tint": Color(1.0, 0.75, 0.35), "behavior": "shooter", "sheet": "crossbow_bolt", "aim": "spin", "rot_offset": PI / 4,
 		"base": {"cooldown": 0.12, "damage": 14.0, "speed": 300.0, "pierce": 3, "amount": 1, "range": 300.0}},
 	"hellfire": {"name": "Hellfire", "quote": "FLAMIN HOTTER", "icon": "fireball_icon",
-		"evolution": true, "tint": Color(0.6, 1.0, 0.5), "explode": 44.0, "behavior": "shooter", "sheet": "fireball", "aim": "nearest",
+		"evolution": true, "tint": Color(0.6, 1.0, 0.5), "explode": 44.0, "behavior": "shooter", "sheet": "fireball", "aim": "facing",
 		"base": {"cooldown": 1.0, "damage": 45.0, "speed": 180.0, "pierce": 3, "amount": 3, "area": 1.5, "range": 260.0}},
 	"bear_maul": {"name": "Bear Maul", "quote": "RAWR XD XD", "icon": "owl_claw_skill",
 		"evolution": true, "tint": Color(1.0, 0.4, 0.4), "behavior": "slash", "sheet": "bearclaw",

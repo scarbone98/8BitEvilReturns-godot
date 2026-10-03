@@ -9,7 +9,11 @@ var list: Array[Dictionary] = []
 func _ready() -> void:
 	font = load("res://assets/fonts/PixelifySans.ttf")
 
+var fresh: Array = []  # host: numbers made since the last snapshot, for guests
+
 func add(at: Vector2, amount: float) -> void:
+	if fresh.size() < 200:
+		fresh.append([at, amount])
 	if list.size() >= MAX:
 		list.pop_front()
 	list.append({"pos": at + Vector2(randf_range(-3, 3), 0), "text": str(roundi(amount)), "t": 0.0})
