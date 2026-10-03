@@ -16,9 +16,13 @@ const K_ENEMY := 69  # E
 const K_SHOTS := 88  # X
 const K_INPUT := 73  # I
 const K_JSON := 74   # J
-const SNAP_EVERY := 1.0 / 20.0
-const RENDER_DELAY := 0.1  # guests draw this far behind the newest snapshot, to blend smoothly
-const INPUT_EVERY := 1.0 / 20.0
+const SNAP_EVERY := 1.0 / 30.0
+const INPUT_EVERY := 1.0 / 30.0
+# Guests draw a little behind the newest snapshot so they can blend between
+# two. How far adapts to the connection: one snapshot gap plus enough to
+# cover how unevenly packets have been arriving, between these bounds.
+const DELAY_MIN := 0.05
+const DELAY_MAX := 0.15
 const CHUNK_BYTES := 7000  # the server refuses packets over 8 KB
 # Bump when the snapshot format or messages change, so a player on an old page
 # (or an old server copy) is told to reload instead of seeing garbage.
@@ -39,6 +43,8 @@ var _building := {}   # the snapshot being assembled from its S/E/X packets
 var _frames: Array = []  # complete snapshots, oldest first: {t, heroes, enemies, ops, pickups}
 var _render_t := -1.0
 var _newest_ms := 0
+var _jitter := 0.02      # smoothed gap between how far apart snapshots arrive and how far apart they are
+var render_delay := 0.1  # current buffer; follows the jitter
 
 func _ready() -> void:
 	_sheet_ids = Db.SHEETS.keys()
@@ -83,11 +89,11 @@ func _process(delta: float) -> void:
 	_clock += delta
 	if run.is_host():
 		if _clock >= SNAP_EVERY:
-			_clock = 0.0
+			_clock = fmod(_clock, SNAP_EVERY)  # keep an even rate across uneven frames
 			_send_snapshots()
 		return
 	if _clock >= INPUT_EVERY:
-		_clock = 0.0
+		_clock = fmod(_clock, INPUT_EVERY)
 		_send_input()
 	if not _hello_ok:
 		_hello_clock += delta
@@ -422,18 +428,29 @@ func _read_shots(data: PackedByteArray) -> void:
 			_frames[-1] = _building
 		else:
 			_frames.append(_building)
-		_newest_ms = Time.get_ticks_msec()
+		# How unevenly snapshots arrive: compare the real gap with the game-time gap.
+		var now_ms := Time.get_ticks_msec()
+		if _frames.size() >= 2 and _newest_ms > 0:
+			var real_gap := (now_ms - _newest_ms) / 1000.0
+			var game_gap: float = _frames[-1].t - _frames[-2].t
+			if game_gap > 0.0 and real_gap < 1.0:
+				var err := absf(real_gap - game_gap)
+				# Rise fast on a bad patch, settle slowly once it's calm.
+				_jitter = lerpf(_jitter, err, 0.3 if err > _jitter else 0.02)
+		_newest_ms = now_ms
 		_building = {}
 		run.pickups.mirror_apply(_frames[-1].pickups)
 
-## Draws the world RENDER_DELAY behind the newest snapshot, blending between
+## Draws the world render_delay behind the newest snapshot, blending between
 ## the two snapshots either side of that moment.
 func _interpolate(delta: float) -> void:
 	if _frames.is_empty():
 		return
 	var newest: Dictionary = _frames[-1]
 	var since := minf((Time.get_ticks_msec() - _newest_ms) / 1000.0, 0.25)
-	var target: float = newest.t + since - RENDER_DELAY
+	var want := clampf(SNAP_EVERY + _jitter * 2.5, DELAY_MIN, DELAY_MAX)
+	render_delay = lerpf(render_delay, want, minf(1.0, delta * 2.0))
+	var target: float = newest.t + since - render_delay
 	if _render_t < 0.0 or absf(target - _render_t) > 0.5:
 		_render_t = target
 	else:
@@ -503,7 +520,7 @@ func _measure(list: Array) -> void:
 	_last_pos = now
 	_jump_clock += get_process_delta_time()
 	if _jump_clock >= 10.0:
-		print("[smooth] biggest enemy jump between frames: %.1f px" % _max_jump)
+		print("[smooth] biggest enemy jump between frames: %.1f px, buffer %d ms" % [_max_jump, roundi(render_delay * 1000.0)])
 		_jump_clock = 0.0
 		_max_jump = 0.0
 

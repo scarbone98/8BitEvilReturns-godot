@@ -496,7 +496,7 @@ func show_lobby() -> void:
 ## fight headless. Quits when the game ends or the room closes.
 func _serve(f: Dictionary) -> void:
 	print("[server] hosting room ", f.get("room", "?"))
-	Engine.max_fps = 30  # plenty for the simulation; snapshots go out 20 times a second
+	Engine.max_fps = 60  # snapshots go out 30 times a second; 60 ticks keeps that even
 	Net.failed.connect(func(msg):
 		print("[server] couldn't join: ", msg)
 		get_tree().quit(1))
