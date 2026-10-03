@@ -18,7 +18,7 @@ var totals := {"kills": 0, "candy": 0, "chests": 0, "bosses": 0, "silver": 0, "d
 var kinds := {}             # enemy -> defeated, all runs
 var evolved: Array = []     # evolutions/unions ever made
 var seen: Array = []        # weapons/passives ever picked up
-var rev := 0                # server revision of the account save
+var rev = null              # server revision of the account save; null before the first upload
 var _sync_queued := false
 var dev_unlock_all := false  # dev flag `unlockall`: everything open, nothing saved
 
@@ -202,20 +202,20 @@ func _push() -> void:
 	_sync_queued = false
 	Bridge.store_save(to_dict(), rev, func(code, data):
 		if code == 200 and data is Dictionary:
-			rev = int(data.get("rev", rev))
+			rev = data.get("revision", rev)
 		elif code == 409 and data is Dictionary:
 			# Another device saved first: take theirs, then keep whatever is better.
-			_merge_remote(data.get("save", {}), int(data.get("rev", rev))))
+			_merge_remote(data.get("save"), data.get("revision")))
 
 func _on_signed_in() -> void:
 	Bridge.load_save(func(code, data):
 		if code == 200 and data is Dictionary:
-			_merge_remote(data.get("save", {}), int(data.get("rev", 0))))
+			_merge_remote(data.get("save"), data.get("revision")))
 
 ## Combines the account save with this device's: unlocks and feats are
 ## unioned, counters take the larger value, silver takes the account's.
-func _merge_remote(remote, remote_rev: int) -> void:
-	rev = remote_rev
+func _merge_remote(remote, remote_rev) -> void:
+	rev = int(remote_rev) if remote_rev != null else null
 	if not (remote is Dictionary) or remote.is_empty():
 		save()  # first sign-in: upload what this device has
 		return

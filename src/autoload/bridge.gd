@@ -85,17 +85,17 @@ func submit_run(seconds: int, kills: int, candy: int) -> void:
 		{"runTimeSeconds": seconds, "kills": kills, "candyCollected": candy})
 
 ## V2's own account save, kept apart from the Unity game's player data.
-## done(code, {save, rev}); a 409 from store_save means another device saved
-## first and carries the newer copy.
+## done(code, {save, revision}); revision is null before the first save. A 409
+## from store_save means another device saved first and carries the newer copy.
 func load_save(done: Callable) -> void:
 	if not is_signed_in():
 		return
 	_request("%s%s/v2/save" % [api_base, API], HTTPClient.METHOD_GET, null, done)
 
-func store_save(save: Dictionary, rev: int, done: Callable) -> void:
+func store_save(save: Dictionary, rev, done: Callable) -> void:
 	if not is_signed_in():
 		return
-	_request("%s%s/v2/save" % [api_base, API], HTTPClient.METHOD_PUT, {"save": save, "rev": rev}, done)
+	_request("%s%s/v2/save" % [api_base, API], HTTPClient.METHOD_PUT, {"save": save, "revision": rev}, done)
 
 func _request(url: String, method: int, body, done := Callable()) -> void:
 	var http := HTTPRequest.new()
@@ -105,6 +105,9 @@ func _request(url: String, method: int, body, done := Callable()) -> void:
 		headers.append("Authorization: Bearer " + access_token)
 	http.request_completed.connect(func(_result, code, _h, bytes: PackedByteArray):
 		http.queue_free()
+		if code == 401:
+			# The login token expired: ask the page for a fresh session.
+			_post_to_page({"type": "unityReady"})
 		if done.is_valid():
 			var parsed = JSON.parse_string(bytes.get_string_from_utf8())
 			done.call(code, parsed if parsed != null else {}))
