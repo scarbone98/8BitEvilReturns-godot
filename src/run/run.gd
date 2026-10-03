@@ -237,6 +237,11 @@ func apply_dev_flags(f: Dictionary) -> void:
 		# Stress test: fill the field with this many enemies right away.
 		for k in int(f.horde):
 			enemies.spawn(Db.ENEMIES.keys().pick_random(), obstacles.free_spot(player.position + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(60, 300), 8.0))
+	if f.has("teleport"):
+		# Dev: start somewhere far away (x,y), e.g. to test co-op players far apart.
+		var xy: PackedStringArray = str(f.teleport).split(",")
+		if xy.size() == 2:
+			player.position = Vector2(float(xy[0]), float(xy[1]))
 	if f.has("propdemo"):
 		_prop_demo.call_deferred()
 	if f.has("die"):

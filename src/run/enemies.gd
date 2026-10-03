@@ -6,7 +6,9 @@ extends Node2D
 signal died(pos: Vector2, kind: String, is_boss: bool, attacker: int)
 
 const CELL := 32.0
-const GRID := 256  # cells per side of the grid window (8192px), centred on the players
+# Spatial hash: grid cells anywhere in the world map into this many buckets,
+# so monsters are found the same way however far apart co-op players roam.
+const BUCKETS := 16384
 
 # Per-kind lookups, built once so the hot loops never touch dictionaries.
 var _kinds: Array[String] = []
@@ -32,15 +34,15 @@ var boss := PackedByteArray()
 var kidx := PackedInt32Array()  # index into the _kind_* tables
 
 var _next_uid := 1
-var _head := PackedInt32Array()  # first enemy in each grid cell, -1 if none
-var _next := PackedInt32Array()  # next enemy in the same cell
-var _gx := 0  # grid window origin, in cells
-var _gy := 0
+var _head := PackedInt32Array()  # first enemy in each bucket, -1 if none
+var _next := PackedInt32Array()  # next enemy in the same bucket
+var _cx := PackedInt32Array()    # each enemy's grid cell
+var _cy := PackedInt32Array()
 var _frame := 0
 var frozen := 0.0  # seconds left of the clock pickup's freeze
 
 func _ready() -> void:
-	_head.resize(GRID * GRID)
+	_head.resize(BUCKETS)
 	for k in Db.ENEMIES:
 		var d: Dictionary = Db.ENEMIES[k]
 		_kinds.append(k)
@@ -124,44 +126,43 @@ func index_of_uid(u: int) -> int:
 			return i
 	return -1
 
-func _cell_index(p: Vector2) -> int:
-	var cx := floori(p.x / CELL) - _gx
-	var cy := floori(p.y / CELL) - _gy
-	if cx < 0 or cy < 0 or cx >= GRID or cy >= GRID:
-		return -1
-	return cy * GRID + cx
+static func _bucket(cx: int, cy: int) -> int:
+	return ((cx * 73856093) ^ (cy * 19349663)) & (BUCKETS - 1)
 
-func _rebuild_grid(center: Vector2) -> void:
-	_gx = floori(center.x / CELL) - GRID / 2
-	_gy = floori(center.y / CELL) - GRID / 2
+func _rebuild_grid(_center: Vector2) -> void:
 	_head.fill(-1)
-	_next.resize(pos.size())
-	for i in pos.size():
-		var c := _cell_index(pos[i])
-		if c == -1:
-			_next[i] = -1
-			continue
-		_next[i] = _head[c]
-		_head[c] = i
+	var n := pos.size()
+	_next.resize(n)
+	_cx.resize(n)
+	_cy.resize(n)
+	for i in n:
+		var cx := floori(pos[i].x / CELL)
+		var cy := floori(pos[i].y / CELL)
+		_cx[i] = cx
+		_cy[i] = cy
+		var b := _bucket(cx, cy)
+		_next[i] = _head[b]
+		_head[b] = i
 
 ## Indices of enemies whose body overlaps the circle.
 func query_circle(center: Vector2, r: float) -> Array:
 	var out := []
 	var reach := r + 36.0  # largest enemy radius
-	var x0 := maxi(floori((center.x - reach) / CELL) - _gx, 0)
-	var x1 := mini(floori((center.x + reach) / CELL) - _gx, GRID - 1)
-	var y0 := maxi(floori((center.y - reach) / CELL) - _gy, 0)
-	var y1 := mini(floori((center.y + reach) / CELL) - _gy, GRID - 1)
-	var n := pos.size()
+	var x0 := floori((center.x - reach) / CELL)
+	var x1 := floori((center.x + reach) / CELL)
+	var y0 := floori((center.y - reach) / CELL)
+	var y1 := floori((center.y + reach) / CELL)
+	var n := mini(pos.size(), _next.size())
 	for cy in range(y0, y1 + 1):
 		for cx in range(x0, x1 + 1):
-			var i := _head[cy * GRID + cx]
+			var i := _head[_bucket(cx, cy)]
 			while i != -1:
-				if i < n and hp[i] > 0.0:
+				# A bucket can hold far-away cells too: only this cell's monsters.
+				if i < n and _cx[i] == cx and _cy[i] == cy and hp[i] > 0.0:
 					var rr := r + radius[i]
 					if center.distance_squared_to(pos[i]) <= rr * rr:
 						out.append(i)
-				i = _next[i] if i < _next.size() else -1
+				i = _next[i] if i < n else -1
 	return out
 
 func nearest(to: Vector2, max_dist := 1e9) -> int:
@@ -247,13 +248,14 @@ func step(delta: float, targets: PackedVector2Array, view: Rect2) -> void:
 		if moving and dist > 1.0:
 			v = to / dist * speed[i]
 		# Separation from a few enemies sharing this cell.
-		var c := _cell_index(p) if onscreen else -1
-		if c != -1:
-			var j := _head[c]
+		if onscreen and i < _next.size():
+			var mx := _cx[i]
+			var my := _cy[i]
+			var j := _head[_bucket(mx, my)]
 			var checked := 0
 			var ri := radius[i]
 			while j != -1 and checked < 6:
-				if j != i:
+				if j != i and _cx[j] == mx and _cy[j] == my:
 					var off := p - pos[j]
 					var min_d := (ri + radius[j]) * 0.8
 					var od2 := off.length_squared()
