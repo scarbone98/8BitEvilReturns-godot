@@ -23,10 +23,21 @@ const PROPS := {
 	"tree_6": {"r": 7.0, "rare": true},
 	"street_lamp": {"r": 3.0, "sheet": "street_lamp"},
 	"mausoleum": {"r": 30.0, "oy": 14.0, "rare": true},
+	"tree_owl": {"r": 7.0, "sheet": "tree_owl", "rare": true},
+	"candybasket": {"r": 7.0},
+}
+
+# Flat things lying on the ground: drawn under everything, no collision.
+const DECOR := {
+	"sewer": {},
+	"skull": {},
+	"blood": {},
 }
 
 var run
 var kinds: Array = []
+var _commons: Array = []  # this stage's non-rare props, to swap in for rare ones
+var _decor: Array = []    # this stage's flat decor kinds
 var layer: Node2D  # the run's y-sorted layer: props are sprites in it, next to the heroes
 var _chunks := {}  # Vector2i -> Array of {kind, pos (feet), c (collision centre), r, rect, sprite}
 var _anim := 0.0
@@ -34,6 +45,8 @@ var _animated: Array = []  # sprites with frames (street lamps)
 
 func setup(stage: Dictionary) -> void:
 	kinds = stage.obstacles
+	_commons = kinds.filter(func(k): return not PROPS[k].get("rare", false))
+	_decor = stage.get("decor", [])
 
 func _chunk_props(c: Vector2i) -> Array:
 	var rng := RandomNumberGenerator.new()
@@ -42,8 +55,8 @@ func _chunk_props(c: Vector2i) -> Array:
 	var n := rng.randi_range(0, 3)
 	for k in n:
 		var kind: String = kinds[rng.randi() % kinds.size()]
-		if PROPS[kind].get("rare", false) and rng.randf() < 0.55:
-			kind = "grave_1_small" if rng.randf() < 0.5 else "grave_2"
+		if PROPS[kind].get("rare", false) and rng.randf() < 0.55 and not _commons.is_empty():
+			kind = _commons[rng.randi() % _commons.size()]
 		var def: Dictionary = PROPS[kind]
 		var r: float = def.r
 		# Keep big props off the chunk edge so they never overlap a neighbour's.
@@ -58,6 +71,11 @@ func _chunk_props(c: Vector2i) -> Array:
 				ok = false
 		if ok:
 			out.append({"kind": kind, "pos": p, "c": centre, "r": r})
+	# Flat decor: anywhere in the chunk, no collision.
+	if not _decor.is_empty():
+		for k in rng.randi_range(0, 2):
+			var d: String = _decor[rng.randi() % _decor.size()]
+			out.append({"kind": d, "decor": true, "pos": Vector2(c) * CHUNK + Vector2(rng.randf_range(8, CHUNK - 8), rng.randf_range(8, CHUNK - 8)), "c": Vector2.ZERO, "r": 0.0})
 	return out
 
 func _chunk(c: Vector2i) -> Array:
@@ -72,6 +90,10 @@ func _chunk(c: Vector2i) -> Array:
 ## Each prop is a Sprite2D in the y-sorted layer, its origin at its feet, so
 ## heroes walk in front of or behind it by where they stand.
 func _make_sprite(o: Dictionary) -> void:
+	if o.get("decor", false):
+		var t := Db.tex(o.kind)
+		o["rect"] = Rect2(o.pos - Vector2(t.get_size()) * 0.5, t.get_size())
+		return  # drawn flat by this node, under everything
 	var def: Dictionary = PROPS[o.kind]
 	var sp := Sprite2D.new()
 	sp.centered = false
@@ -113,7 +135,7 @@ func props_in(view: Rect2) -> Array:
 	var out := []
 	for props in _chunks.values():
 		for o in props:
-			if view.intersects(o.rect):
+			if not o.get("decor", false) and view.intersects(o.rect):
 				out.append(o)
 	return out
 
@@ -134,6 +156,15 @@ func update_around(centers: Array) -> void:
 	var f := int(_anim * 6.0)
 	for sp in _animated:
 		sp.frame = f % sp.hframes
+	queue_redraw()
+
+func _draw() -> void:
+	var view: Rect2 = run.view_rect().grow(32)
+	for props in _chunks.values():
+		for o in props:
+			if o.get("decor", false) and view.has_point(o.pos):
+				var t := Db.tex(o.kind)
+				draw_texture_rect(t, Rect2((o.pos - Vector2(t.get_size()) * 0.5).floor(), t.get_size()), false, Color(1, 1, 1, 0.75))
 
 ## Moves a circle at `p` out of any prop it overlaps.
 func push_out(p: Vector2, r: float) -> Vector2:
@@ -141,6 +172,8 @@ func push_out(p: Vector2, r: float) -> Vector2:
 	for dx in [-1, 0, 1]:
 		for dy in [-1, 0, 1]:
 			for o in _chunk(c + Vector2i(dx, dy)):
+				if o.get("decor", false):
+					continue
 				var off: Vector2 = p - o.c
 				var min_d: float = o.r + r
 				if off.length_squared() < min_d * min_d:
@@ -155,6 +188,8 @@ func is_free(p: Vector2, r: float) -> bool:
 	for dx in [-1, 0, 1]:
 		for dy in [-1, 0, 1]:
 			for o in _chunk(c + Vector2i(dx, dy)):
+				if o.get("decor", false):
+					continue
 				var min_d: float = o.r + r
 				if p.distance_squared_to(o.c) < min_d * min_d:
 					return false

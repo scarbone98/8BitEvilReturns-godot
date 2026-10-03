@@ -1,8 +1,14 @@
 extends RefCounted
 # ---------------------------------------------------------------- Stages
-# spawns: while from <= minute < to, keep spawning `enemy` at `rate`/s.
-# events: one-shot at `at` minutes: "ring" circles the player, "boss" spawns
-# a big version that drops a chest.
+# Each stage: a floor (`ground`, recoloured from the original with
+# tools/recolor.py), the props scattered on it (`obstacles`) and flat `decor`,
+# and its monsters:
+#   spawns: while from <= minute < to, keep spawning `enemy` at `rate`/s.
+#   events: one-shot at `at` minutes: "ring" circles the player, "boss" spawns
+#           a big version that drops a chest.
+# Modifiers: hp_per_minute (how fast monsters toughen), speed_mul (monster
+# speed), silver_bonus (extra silver at the end). `locked` stages need the feat
+# that lists them in progression.gd.
 const STAGES := {
 	"graveyard": {
 		"name": "The Graveyard", "about": "Where it all started.", "ground": "gamebg", "hp_per_minute": 0.35, "max_alive": 600,
@@ -56,6 +62,93 @@ const STAGES := {
 			{"at": 12.0, "type": "ring", "enemy": "shadowbeast", "count": 30},
 			{"at": 14.0, "type": "boss", "enemy": "swampthing"},
 			{"at": 18.0, "type": "boss", "enemy": "swampthing"},
+		],
+	},
+	"pumpkin_patch": {
+		"name": "Pumpkin Patch", "about": "Rows of grinning gourds, and something in the corn.",
+		"ground": "ground_pumpkin", "hp_per_minute": 0.4, "max_alive": 600, "locked": true, "silver_bonus": 0.2,
+		"obstacles": ["tree_3", "tree_4", "tree_owl", "candybasket", "grave_2", "street_lamp"],
+		"spawns": [
+			{"enemy": "pumpkin", "from": 0.0, "to": 6.0, "rate": 1.0},
+			{"enemy": "zombie", "from": 0.0, "to": 4.0, "rate": 0.4},
+			{"enemy": "skull", "from": 1.0, "to": 30.0, "rate": 0.6},
+			{"enemy": "scarecrow", "from": 2.0, "to": 30.0, "rate": 0.6},
+			{"enemy": "pumpkin", "from": 6.0, "to": 30.0, "rate": 2.0},
+			{"enemy": "werewolf", "from": 5.0, "to": 30.0, "rate": 0.8},
+			{"enemy": "shadowbeast", "from": 10.0, "to": 30.0, "rate": 0.6},
+		],
+		"events": [
+			{"at": 1.5, "type": "ring", "enemy": "pumpkin", "count": 24},
+			{"at": 3.0, "type": "boss", "enemy": "scarecrow"},
+			{"at": 5.0, "type": "ring", "enemy": "scarecrow", "count": 16},
+			{"at": 7.0, "type": "boss", "enemy": "werewolf"},
+			{"at": 9.0, "type": "ring", "enemy": "pumpkin", "count": 40},
+			{"at": 11.0, "type": "boss", "enemy": "scarecrow"},
+			{"at": 15.0, "type": "boss", "enemy": "shadowbeast"},
+		],
+	},
+	"snowbound": {
+		"name": "Snowbound Cemetery", "about": "Fresh snow, fast feet. Everything out here is in a hurry.",
+		"ground": "ground_snow", "hp_per_minute": 0.4, "max_alive": 600, "locked": true, "silver_bonus": 0.3,
+		"speed_mul": 1.15,
+		"obstacles": ["tree", "tree_2", "tree_5", "tree_6", "tree_owl", "grave_1_small", "grave_2", "mausoleum"],
+		"spawns": [
+			{"enemy": "ghost", "from": 0.0, "to": 30.0, "rate": 0.6},
+			{"enemy": "skull", "from": 0.0, "to": 30.0, "rate": 0.8},
+			{"enemy": "werewolf", "from": 1.5, "to": 30.0, "rate": 0.6},
+			{"enemy": "zombie", "from": 3.0, "to": 30.0, "rate": 0.8},
+			{"enemy": "shadowbeast", "from": 6.0, "to": 30.0, "rate": 0.5},
+			{"enemy": "ghost", "from": 9.0, "to": 30.0, "rate": 1.4},
+		],
+		"events": [
+			{"at": 2.0, "type": "ring", "enemy": "ghost", "count": 24},
+			{"at": 3.5, "type": "boss", "enemy": "werewolf"},
+			{"at": 6.0, "type": "ring", "enemy": "werewolf", "count": 20},
+			{"at": 8.0, "type": "boss", "enemy": "shadowbeast"},
+			{"at": 12.0, "type": "boss", "enemy": "werewolf"},
+			{"at": 16.0, "type": "boss", "enemy": "shadowbeast"},
+		],
+	},
+	"sewers": {
+		"name": "The Sewers", "about": "Wide open tunnels. Nowhere to hide from what crawls up the drains.",
+		"ground": "ground_sewer", "hp_per_minute": 0.45, "max_alive": 600, "locked": true, "silver_bonus": 0.4,
+		"obstacles": ["street_lamp", "grave_2"],
+		"decor": ["sewer", "skull", "blood"],
+		"spawns": [
+			{"enemy": "zombie", "from": 0.0, "to": 30.0, "rate": 1.0},
+			{"enemy": "swampthing", "from": 1.0, "to": 30.0, "rate": 0.35},
+			{"enemy": "skull", "from": 2.0, "to": 30.0, "rate": 1.0},
+			{"enemy": "ghost", "from": 4.0, "to": 30.0, "rate": 0.8},
+			{"enemy": "swampthing", "from": 8.0, "to": 30.0, "rate": 0.6},
+		],
+		"events": [
+			{"at": 2.0, "type": "ring", "enemy": "zombie", "count": 30},
+			{"at": 4.0, "type": "boss", "enemy": "swampthing"},
+			{"at": 7.0, "type": "ring", "enemy": "swampthing", "count": 12},
+			{"at": 9.0, "type": "boss", "enemy": "swampthing"},
+			{"at": 13.0, "type": "boss", "enemy": "swampthing"},
+		],
+	},
+	"crypt_depths": {
+		"name": "Crypt Depths", "about": "Deep under the graveyard, where the bosses sleep. Not for long.",
+		"ground": "ground_crypt", "hp_per_minute": 0.6, "max_alive": 600, "locked": true, "silver_bonus": 0.6,
+		"obstacles": ["mausoleum", "grave_1_small", "grave_2", "street_lamp"],
+		"decor": ["skull", "blood"],
+		"spawns": [
+			{"enemy": "skull", "from": 0.0, "to": 30.0, "rate": 1.2},
+			{"enemy": "shadowbeast", "from": 0.5, "to": 30.0, "rate": 0.5},
+			{"enemy": "ghost", "from": 2.0, "to": 30.0, "rate": 0.8},
+			{"enemy": "werewolf", "from": 4.0, "to": 30.0, "rate": 0.7},
+			{"enemy": "swampthing", "from": 6.0, "to": 30.0, "rate": 0.5},
+		],
+		"events": [
+			{"at": 1.0, "type": "boss", "enemy": "shadowbeast"},
+			{"at": 3.0, "type": "boss", "enemy": "werewolf"},
+			{"at": 5.0, "type": "boss", "enemy": "swampthing"},
+			{"at": 7.0, "type": "ring", "enemy": "shadowbeast", "count": 24},
+			{"at": 8.0, "type": "boss", "enemy": "scarecrow"},
+			{"at": 10.0, "type": "boss", "enemy": "shadowbeast"},
+			{"at": 12.0, "type": "boss", "enemy": "swampthing"},
 		],
 	},
 }

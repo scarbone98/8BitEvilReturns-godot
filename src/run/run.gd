@@ -352,7 +352,12 @@ func _hero_positions() -> Array:
 	return heroes.values().map(func(h): return h.position)
 
 func _follow_camera() -> void:
-	camera.position = player.position
+	# Follow smoothly, rounded to whole *screen* pixels (not world pixels:
+	# at 2-5 screen pixels per world pixel, that made the view hop unevenly).
+	var root := get_tree().root
+	var k := float(root.size.y) / maxf(1.0, float(root.content_scale_size.y))
+	camera.position = (player.position * k).round() / k
+	camera.force_update_scroll()  # apply this frame, so the view never lags the hero
 	obstacles.update_around(_hero_positions())
 	# Snap the tiled ground to its tile size so it never runs out.
 	ground.position = (player.position / Vector2(640, 400)).floor() * Vector2(640, 400)
@@ -376,6 +381,7 @@ func _spawn(delta: float) -> void:
 	var hp_mul := (1.0 + minute * float(stage.hp_per_minute)) * (1.0 + curse) * (1.0 + (team - 1.0) * 0.5)
 	var ramp := (1.0 + minute * 0.15) * (1.0 + curse) * team
 	var cap: int = stage.max_alive if not dev_unlimited else 100000
+	var speed_mul: float = stage.get("speed_mul", 1.0)
 	for i in stage.spawns.size():
 		var sp: Dictionary = stage.spawns[i]
 		if minute < sp.from or minute >= sp.to:
@@ -384,7 +390,7 @@ func _spawn(delta: float) -> void:
 		while _spawn_acc[i] >= 1.0:
 			_spawn_acc[i] -= 1.0
 			if enemies.count() < cap:
-				enemies.spawn(sp.enemy, _offscreen_point(Db.ENEMIES[sp.enemy].radius), hp_mul)
+				enemies.spawn(sp.enemy, _offscreen_point(Db.ENEMIES[sp.enemy].radius), hp_mul, false, speed_mul)
 	for i in stage.events.size():
 		var ev: Dictionary = stage.events[i]
 		if _events_done.has(i) or minute < ev.at:
@@ -396,9 +402,9 @@ func _spawn(delta: float) -> void:
 					var r: float = h.view_size.length() * 0.55
 					for k in ev.count:
 						var at: Vector2 = h.position + Vector2.RIGHT.rotated(TAU * k / ev.count) * r
-						enemies.spawn(ev.enemy, obstacles.free_spot(at, Db.ENEMIES[ev.enemy].radius), hp_mul)
+						enemies.spawn(ev.enemy, obstacles.free_spot(at, Db.ENEMIES[ev.enemy].radius), hp_mul, false, speed_mul)
 			"boss":
-				enemies.spawn(ev.enemy, _offscreen_point(Db.ENEMIES[ev.enemy].radius * 2.0), hp_mul, true)
+				enemies.spawn(ev.enemy, _offscreen_point(Db.ENEMIES[ev.enemy].radius * 2.0), hp_mul, true, speed_mul)
 
 ## Just off a random hero's screen, never inside a grave, tree or building.
 func _offscreen_point(r := 8.0) -> Vector2:
@@ -818,7 +824,8 @@ func summary_for(h) -> Dictionary:
 	return {"seconds": seconds, "kills": h.kills, "level": level, "chests": h.chests, "bosses": h.bosses,
 		"candy": h.candy, "healed": int(h.healed), "evolutions": h.evolutions, "unions": h.unions,
 		"weapons_full": h.weapons_full, "silver": earned, "distance": int(h.distance / 16.0),
-		"char": h.char_id, "kinds": h.kind_kills, "evolved": h.made, "seen": seen, "team": heroes.size()}
+		"char": h.char_id, "kinds": h.kind_kills, "evolved": h.made, "seen": seen, "team": heroes.size(),
+		"stage": stage_id}
 
 func _on_hero_down(h) -> void:
 	if ended:

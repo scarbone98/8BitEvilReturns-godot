@@ -6,6 +6,7 @@ extends RefCounted
 ##                                      chests, bosses, candy, healed, evolutions,
 ##                                      unions, weapons_full, silver)
 ##   {run: stat, min: n, char: id}      ...as that hero
+##   {run: stat, min: n, stage: id}     ...on that stage
 ##   {total: stat, min: n}              across every run (kills, candy, chests,
 ##                                      bosses, silver, distance, runs)
 ##   {kind: enemy, min: n}              that enemy defeated, across every run
@@ -18,6 +19,11 @@ const FEATS := {
 	"survive_10": {"name": "Graveyard Shift", "desc": "Survive 10 minutes", "check": {"run": "seconds", "min": 600}, "unlocks": ["crimson_crypt"]},
 	"survive_15": {"name": "Howl at the Moon", "desc": "Survive 15 minutes", "check": {"run": "seconds", "min": 900}, "unlocks": []},
 	"survive_20": {"name": "Swamp Legend", "desc": "Survive 20 minutes", "check": {"run": "seconds", "min": 1200}, "unlocks": []},
+	"patch_8": {"name": "Out to Pasture", "desc": "Survive 8 minutes in The Graveyard", "check": {"run": "seconds", "min": 480, "stage": "graveyard"}, "unlocks": ["pumpkin_patch"]},
+	"snow_8": {"name": "Cold Snap", "desc": "Survive 8 minutes in the Pumpkin Patch", "check": {"run": "seconds", "min": 480, "stage": "pumpkin_patch"}, "unlocks": ["snowbound"]},
+	"sewer_8": {"name": "Down the Drain", "desc": "Survive 8 minutes in Snowbound Cemetery", "check": {"run": "seconds", "min": 480, "stage": "snowbound"}, "unlocks": ["sewers"]},
+	"crypt_10": {"name": "Deeper Still", "desc": "Survive 10 minutes in The Sewers", "check": {"run": "seconds", "min": 600, "stage": "sewers"}, "unlocks": ["crypt_depths"]},
+	"crypt_15": {"name": "Bossy", "desc": "Survive 15 minutes in Crypt Depths", "check": {"run": "seconds", "min": 900, "stage": "crypt_depths"}, "unlocks": []},
 	"survive_30": {"name": "Dawn", "desc": "Survive 30 minutes", "check": {"run": "seconds", "min": 1800}, "unlocks": ["duplicator"]},
 	"kills_1000": {"name": "Monster Masher", "desc": "Defeat 1,000 monsters (all runs)", "check": {"total": "kills", "min": 1000}, "unlocks": ["skull_toss"]},
 	"kills_2000": {"name": "Brains!", "desc": "Defeat 2,000 monsters (all runs)", "check": {"total": "kills", "min": 2000}, "unlocks": []},

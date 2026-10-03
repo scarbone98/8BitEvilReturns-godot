@@ -141,6 +141,8 @@ func _feat_met(c: Dictionary, r: Dictionary) -> bool:
 	if c.has("run"):
 		if c.has("char") and r.char != c.char:
 			return false
+		if c.has("stage") and r.get("stage", "") != c.stage:
+			return false
 		return float(r.get(c.run, 0)) >= float(c.min)
 	if c.has("total"):
 		return float(totals.get(c.total, 0)) >= float(c.min)

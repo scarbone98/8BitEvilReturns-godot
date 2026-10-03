@@ -52,7 +52,7 @@ func _ready() -> void:
 func count() -> int:
 	return pos.size()
 
-func spawn(k: String, at: Vector2, hp_mul := 1.0, is_boss := false) -> void:
+func spawn(k: String, at: Vector2, hp_mul := 1.0, is_boss := false, speed_mul := 1.0) -> void:
 	var d: Dictionary = Db.ENEMIES[k]
 	var s := 2.0 if is_boss else 1.0
 	kind.append(k)
@@ -61,7 +61,7 @@ func spawn(k: String, at: Vector2, hp_mul := 1.0, is_boss := false) -> void:
 	var h: float = d.hp * hp_mul * (25.0 if is_boss else 1.0)
 	hp.append(h)
 	max_hp.append(h)
-	speed.append(d.speed * (0.85 if is_boss else randf_range(0.9, 1.1)))
+	speed.append(d.speed * speed_mul * (0.85 if is_boss else randf_range(0.9, 1.1)))
 	damage.append(d.damage * (1.5 if is_boss else 1.0))
 	radius.append(d.radius * s)
 	scale_.append(s)
