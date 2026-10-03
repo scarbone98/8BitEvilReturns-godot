@@ -102,11 +102,15 @@ func fire() -> bool:
 			# second goes the other way, more stack above and below.
 			if absf(player.facing.x) > 0.2:
 				_side = signf(player.facing.x)
-			for k in amount():
-				var side := _side if k % 2 == 0 else -_side
-				var idx := k / 2
-				var row := ((idx + 1) / 2) * (-1 if idx % 2 == 1 else 1)
-				shots.slash(self, side, row, k * 0.1)
+			var n := amount()
+			for k in n:
+				var other := k % 2
+				var side := _side if other == 0 else -_side
+				# Each side's lashes stack centred on the hero and land together;
+				# the other side follows a beat later.
+				var on_side := (n + 1) / 2 if other == 0 else n / 2
+				var row := (k / 2) - (on_side - 1) * 0.5
+				shots.slash(self, side, row, other * 0.12)
 		"boomerang":
 			var n := amount()
 			var base_dir: Vector2 = player.facing

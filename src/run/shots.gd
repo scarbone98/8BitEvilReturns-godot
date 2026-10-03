@@ -34,12 +34,12 @@ func bullet(w: Weapon, from: Vector2, dir: Vector2) -> void:
 
 ## A whip lash: a long, flat strip beside the hero. side is -1/1, row stacks
 ## extra lashes above (-) and below (+).
-func slash(w: Weapon, side: float, row: int, delay: float) -> void:
+func slash(w: Weapon, side: float, row: float, delay: float) -> void:
 	var sh := Db.sheet(w.def.sheet)
 	var hw := 28.0 * w.area()
 	var hh := 10.0 * w.area()
 	_add(w, "slash", {"side": side, "life": float(sh.frames) / sh.fps, "delay": delay, "pierce": -1,
-		"hw": hw, "hh": hh, "off": Vector2(side * (hw + 2.0), -6.0 + row * hh * 2.0)})
+		"hw": hw, "hh": hh, "off": Vector2(side * (hw + 2.0), -8.0 + row * (hh * 2.0 + 2.0))})
 
 func boomerang(w: Weapon, dir: Vector2) -> void:
 	_add(w, "boomerang", {"vel": dir * w.speed(), "life": 6.0, "pierce": -1, "rehit": 0.5,
