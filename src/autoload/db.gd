@@ -23,7 +23,7 @@ const SHEETS := {
 	"idle_jon": {"path": "idle_jon", "frames": 5, "fps": 6},
 	# Enemies
 	"zombie": {"path": "zombie", "frames": 6, "fps": 8},
-	"skull": {"path": "skull_enemy", "frames": 8, "fps": 10},
+	"skull": {"path": "skull_enemy", "frames": 6, "fps": 10},
 	"ghost": {"path": "ghost", "frames": 6, "fps": 8},
 	"pumpkin": {"path": "pumpkin", "frames": 6, "fps": 10},
 	"werewolf": {"path": "werewolf", "frames": 7, "fps": 12},
