@@ -336,7 +336,7 @@ const CANDY := [
 # a big version that drops a chest.
 const STAGES := {
 	"graveyard": {
-		"name": "The Graveyard", "ground": "gamebg", "hp_per_minute": 0.35, "max_alive": 320,
+		"name": "The Graveyard", "ground": "gamebg", "hp_per_minute": 0.35, "max_alive": 600,
 		"obstacles": ["grave_1_small", "grave_2", "tree", "tree_2", "tree_3", "tree_4", "tree_5", "tree_6", "street_lamp", "mausoleum"],
 		"spawns": [
 			{"enemy": "zombie", "from": 0.0, "to": 3.0, "rate": 0.6},

@@ -36,6 +36,10 @@ var _pending_levels := 0
 var _modal: Control
 var autoplay := false
 var dev := false  # dev/test runs never save or submit scores
+var dev_unlimited := false
+var _bench := 0  # frames left to time; dev flag "bench"
+var _bench_us := []
+var _prof := [0, 0, 0]
 
 func start(char_id: String, stage_id := "graveyard") -> void:
 	stage = Db.STAGES[stage_id]
@@ -88,12 +92,20 @@ func start(char_id: String, stage_id := "graveyard") -> void:
 ## level it), `minute` skips ahead, `autoplay` lets a bot play.
 func apply_dev_flags(f: Dictionary) -> void:
 	dev = true
+	dev_unlimited = f.has("horde")
 	autoplay = f.has("autoplay")
 	player.autopilot = autoplay
 	if f.has("give"):
 		for id in str(f.give).split(","):
 			if Db.WEAPONS.has(id) or Db.PASSIVES.has(id):
 				player.upgrade(id)
+	if f.has("bench"):
+		_bench = 400
+		player.stats.armor = 1.0  # can't die while being timed
+	if f.has("horde"):
+		# Stress test: fill the field with this many enemies right away.
+		for k in int(f.horde):
+			enemies.spawn(Db.ENEMIES.keys().pick_random(), player.position + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(60, 300))
 	if f.has("die"):
 		_on_player_died.call_deferred()
 	if f.has("levelup"):
@@ -119,6 +131,23 @@ func view_rect() -> Rect2:
 func _process(delta: float) -> void:
 	if ended or get_tree().paused:
 		return
+	if _bench > 0:
+		var t0 := Time.get_ticks_usec()
+		_tick(delta)
+		_bench_us.append(Time.get_ticks_usec() - t0)
+		for i in enemies.count():
+			enemies.hp[i] = maxf(enemies.hp[i], 1.0e6)
+		_bench -= 1
+		if _bench == 0:
+			_bench_us.sort()
+			print("[bench] enemies %d  median %.2fms  p95 %.2fms  max %.2fms" % [enemies.count(),
+				_bench_us[_bench_us.size() / 2] / 1000.0, _bench_us[int(_bench_us.size() * 0.95)] / 1000.0, _bench_us[-1] / 1000.0])
+			print("[bench] per frame: enemies %.2fms shots %.2fms pickups %.2fms" % [_prof[0] / 400000.0, _prof[1] / 400000.0, _prof[2] / 400000.0])
+			get_tree().quit()
+		return
+	_tick(delta)
+
+func _tick(delta: float) -> void:
 	delta = minf(delta, 1.0 / 20.0)
 	time += delta
 	player.step(delta)
@@ -127,11 +156,17 @@ func _process(delta: float) -> void:
 	# Snap the tiled ground to its tile size so it never runs out.
 	ground.position = (player.position / Vector2(640, 400)).floor() * Vector2(640, 400)
 	_spawn(delta)
-	enemies.step(delta, player.position, view_rect())
+	var t0 := Time.get_ticks_usec()
+	enemies.step(delta, PackedVector2Array([player.position]), view_rect())
+	var t1 := Time.get_ticks_usec()
 	_contact_damage()
 	shots.step(delta)
+	var t2 := Time.get_ticks_usec()
 	pickups.step(delta)
 	popups.step(delta)
+	var t3 := Time.get_ticks_usec()
+	if _bench > 0:
+		_prof[0] += t1 - t0; _prof[1] += t2 - t1; _prof[2] += t3 - t2
 	if autoplay and int(time / 30.0) != int((time - delta) / 30.0):
 		_log_status("t")
 	player.queue_redraw()
@@ -155,7 +190,7 @@ func _spawn(delta: float) -> void:
 		_spawn_acc[i] += sp.rate * ramp * delta
 		while _spawn_acc[i] >= 1.0:
 			_spawn_acc[i] -= 1.0
-			if enemies.count() < stage.max_alive:
+			if enemies.count() < (stage.max_alive if not dev_unlimited else 100000):
 				enemies.spawn(sp.enemy, _offscreen_point(), hp_mul)
 	for i in stage.events.size():
 		var ev: Dictionary = stage.events[i]
