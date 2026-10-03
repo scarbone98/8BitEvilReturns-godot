@@ -57,16 +57,18 @@ func _draw() -> void:
 	# Timer, the score.
 	_text(Vector2(W * 0.5, 44), UI.time_text(run.time), 12, UI.PALE, HORIZONTAL_ALIGNMENT_CENTER)
 	# Kills and silver.
-	draw_texture_rect(Db.tex("skull"), Rect2(6, 50, 10, 10), false)
-	_text(Vector2(19, 59), str(run.kills), 8)
+	var sy := 28.0 + ceilf(ceili(p.max_hp() / HEART_HP) / 7.0) * 11.0 + 2.0
+	draw_texture_rect(Db.tex("skull"), Rect2(6, sy, 10, 10), false)
+	_text(Vector2(19, sy + 9), str(run.kills), 8)
 	var coin := Db.sheet("silver")
-	draw_texture_rect_region(coin._tex, Rect2(6, 62, 10, 10), Rect2(0, 0, coin._w, coin._h))
-	_text(Vector2(19, 71), str(run.silver_found), 8)
+	draw_texture_rect_region(coin._tex, Rect2(6, sy + 12, 10, 10), Rect2(0, 0, coin._w, coin._h))
+	_text(Vector2(19, sy + 21), str(run.silver_found), 8)
 	# Hearts.
 	var hearts := ceili(p.max_hp() / HEART_HP)
 	var hp: float = p.hp
 	for i in hearts:
-		var r := Rect2(6 + i * 11, 28, 10, 10)
+		# Seven per row keeps the hearts clear of the timer.
+		var r := Rect2(6 + (i % 7) * 11, 28 + (i / 7) * 11, 10, 10)
 		draw_texture_rect(Db.tex("heart_empty"), r, false)
 		var fill := clampf((hp - i * HEART_HP) / HEART_HP, 0.0, 1.0)
 		if fill > 0.0:
