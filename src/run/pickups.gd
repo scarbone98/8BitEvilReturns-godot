@@ -92,16 +92,17 @@ func _draw() -> void:
 		var bob := sin(p.t * 4.0) * 1.0
 		if p.type == "candy":
 			var s := Db.sheet(Db.CANDY[p.tier].sheet)
-			var sz := 12.0 if p.tier == 0 else 14.0
+			var sz := 12.0  # half of the 24px candy art
 			draw_texture_rect_region(s._tex, Rect2(p.pos + Vector2(-sz * 0.5, -sz * 0.5 + bob), Vector2(sz, sz)), Db.frame_rect(s, p.t))
 			continue
 		var it: Dictionary = ITEMS[p.type]
 		if it.has("sheet"):
 			var s := Db.sheet(it.sheet)
-			draw_texture_rect_region(s._tex, Rect2(p.pos + Vector2(-6, -6 + bob), Vector2(12, 12)), Db.frame_rect(s, p.t))
+			draw_texture_rect_region(s._tex, Rect2(p.pos + Vector2(-8, -8 + bob), Vector2(16, 16)), Db.frame_rect(s, p.t))
 		else:
 			var t := Db.tex(it.tex)
-			var sz := Vector2(t.get_size()).clamp(Vector2.ZERO, Vector2(18, 18))
-			if p.type == "chest":
-				sz = Vector2(20, 20)
+			# Native size, or half for the 32px chest and basket: whole pixels.
+			var sz := Vector2(t.get_size())
+			if sz.x > 16.0:
+				sz *= 0.5
 			draw_texture_rect(t, Rect2(p.pos - sz * 0.5 + Vector2(0, bob), sz), false)

@@ -21,7 +21,6 @@ window/size/window_width_override=480
 window/size/window_height_override=852
 window/stretch/mode="viewport"
 window/stretch/aspect="expand"
-window/stretch/scale_mode="integer"
 window/handheld/orientation=1
 
 [gui]

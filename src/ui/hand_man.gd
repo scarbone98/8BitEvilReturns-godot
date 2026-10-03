@@ -63,7 +63,7 @@ func _process(delta: float) -> void:
 func _draw_hand() -> void:
 	var s := Db.sheet("hand")
 	var frame := int(_t * 6.0) % int(s.frames)
-	var size := Vector2(56, 56)
+	var size := Vector2(48, 48)  # half size: whole pixels
 	# Hover: bob up and down and sway a little, like it's floating.
 	var bob := sin(_t * 3.0) * 3.0
 	var sway := sin(_t * 1.7) * 0.12

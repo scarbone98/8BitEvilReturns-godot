@@ -74,11 +74,11 @@ func pool(w: Weapon, at: Vector2, sheet: String, radius: float) -> void:
 
 func bat(w: Weapon, from: Vector2) -> void:
 	_add(w, "bat", {"pos": from, "life": w.duration(), "pierce": -1, "rehit": w.def.get("bite", 0.4),
-		"radius": 7.0, "target": -1, "wander": randf() * TAU, "scale": 0.6})
+		"radius": 7.0, "target": -1, "wander": randf() * TAU, "scale": 0.5})
 
 func wisp(w: Weapon, from: Vector2, dir: Vector2, sheet := "") -> void:
 	_add(w, "wisp", {"pos": from, "vel": dir * w.speed(), "life": w.duration(), "radius": 7.0,
-		"target": -1, "scale": 0.7 if w.def.sheet == "wisp" or sheet == "wisp" else 0.9,
+		"target": -1, "scale": 0.5 if w.def.sheet == "wisp" or sheet == "wisp" else 1.0,
 		"sheet": sheet if sheet != "" else w.def.sheet})
 
 func aura(w: Weapon) -> void:
@@ -351,15 +351,13 @@ func exec_ops(list_ops: Array, view: Rect2) -> void:
 				var sh := Db.sheet(op[1])
 				var src := Rect2(int(op[2]) % int(sh.frames) * sh._w, 0, sh._w, sh._h)
 				var sc: Vector2 = op[5]
-				if op[4] == 0.0 and sc.y > 0.0:
-					# Unrotated: draw straight, flipping with a negative width.
-					var w: float = sh._w * absf(sc.x)
+				if op[4] == 0.0 and sc.x > 0.0 and sc.y > 0.0:
+					# Unrotated and unflipped: draw straight.
+					var w: float = sh._w * sc.x
 					var h: float = sh._h * sc.y
-					var r := Rect2(op[3] - Vector2(w, h) * 0.5, Vector2(w, h))
-					if sc.x < 0.0:
-						r = Rect2(r.position.x + w, r.position.y, -w, h)
-					draw_texture_rect_region(sh._tex, r, src, op[6])
+					draw_texture_rect_region(sh._tex, Rect2(op[3] - Vector2(w, h) * 0.5, Vector2(w, h)), src, op[6])
 				else:
+					# Rotated or mirrored (negative x scale) around its centre.
 					draw_set_transform(op[3], op[4], sc)
 					draw_texture_rect_region(sh._tex, Rect2(-sh._w * 0.5, -sh._h * 0.5, sh._w, sh._h), src, op[6])
 					draw_set_transform(Vector2.ZERO)

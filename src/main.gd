@@ -5,7 +5,11 @@ const RunScript := preload("res://src/run/run.gd")
 
 var _screen: Node
 
+const MIN_VIEW := Vector2(240, 400)  # the smallest view the game is laid out for
+
 func _ready() -> void:
+	_fit_screen()
+	get_tree().root.size_changed.connect(_fit_screen)
 	var f := Bridge.flags()
 	if f.has("speed"):
 		Engine.time_scale = float(f.speed)
@@ -17,6 +21,16 @@ func _ready() -> void:
 		_start_run(true)
 	else:
 		show_title()
+
+## Pixel-perfect scaling that fills the screen: the largest whole-number zoom
+## that still shows at least MIN_VIEW, with the view sized to fill the rest.
+## (Godot's own "integer" mode leaves black bars below a 2x zoom.)
+func _fit_screen() -> void:
+	var win := Vector2(get_tree().root.size)
+	if win.x <= 0 or win.y <= 0:
+		return
+	var zoom := maxf(1.0, floorf(minf(win.x / MIN_VIEW.x, win.y / MIN_VIEW.y)))
+	get_tree().root.content_scale_size = Vector2i(floori(win.x / zoom), floori(win.y / zoom))
 
 func _swap(n: Node) -> void:
 	if _screen:

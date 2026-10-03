@@ -105,23 +105,33 @@ func magnet_radius() -> float:
 func move_speed() -> float:
 	return BASE_MOVE * (1.0 + stats.move)
 
-func _unhandled_input(event: InputEvent) -> void:
+## Touch: put a finger down anywhere and drag; the stick stays where the
+## finger landed. Read in _input (not _unhandled_input) so a lift that lands
+## on a button still lets go of the stick.
+func _input(event: InputEvent) -> void:
+	if mode != "local":
+		return
 	if event is InputEventScreenTouch:
-		if event.pressed and _touch_id == -1:
-			_touch_id = event.index
-			_touch_origin = event.position
-			_touch_vec = Vector2.ZERO
-		elif not event.pressed and event.index == _touch_id:
-			_touch_id = -1
-			_touch_vec = Vector2.ZERO
+		if event.pressed:
+			if _touch_id == -1 and not get_tree().paused:
+				_touch_id = event.index
+				_touch_origin = event.position
+				_touch_vec = Vector2.ZERO
+		elif event.index == _touch_id:
+			reset_touch()
 	elif event is InputEventScreenDrag and event.index == _touch_id:
 		var off: Vector2 = event.position - _touch_origin
 		var maxr := 28.0
-		if off.length() > maxr:
-			# Drag the origin along so reversing direction is instant.
-			_touch_origin = event.position - off.normalized() * maxr
-			off = off.normalized() * maxr
-		_touch_vec = off / maxr
+		_touch_vec = off.limit_length(maxr) / maxr
+
+## Lets go of the stick (menus opening/closing, losing focus).
+func reset_touch() -> void:
+	_touch_id = -1
+	_touch_vec = Vector2.ZERO
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		reset_touch()
 
 func joystick() -> Dictionary:
 	return {"active": _touch_id != -1, "origin": _touch_origin, "vec": _touch_vec}
@@ -347,8 +357,6 @@ func _draw() -> void:
 	var shadow := Db.tex("shadow_small")
 	draw_texture_rect(shadow, Rect2(-7, -3, 14, 6), false, Color(1, 1, 1, 0.6))
 	var rect := Rect2(-w * 0.5, -h + 2, w, h)
-	if facing.x < 0:
-		rect = Rect2(rect.position.x + w, rect.position.y, -w, h)
 	var col := Color.WHITE
 	if dead:
 		col = Color(0.6, 0.7, 1.0, 0.35)
@@ -358,7 +366,11 @@ func _draw() -> void:
 		col = Color(1, 0.3, 0.3)
 	elif _invuln > 0.0 and int(_invuln * 20) % 2 == 0:
 		col = Color(1, 1, 1, 0.5)
+	# Mirror around the hero's centre (a negative-width rect only shifts it).
+	if facing.x < 0:
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(-1, 1))
 	draw_texture_rect_region(s._tex, rect, src, col)
+	draw_set_transform(Vector2.ZERO)
 	if dead:
 		return
 	if mode != "local" and player_name != "":

@@ -286,7 +286,7 @@ const WEAPONS := {
 	},
 	"grave_hand": {
 		"name": "Grave Hand", "quote": "Somebody needs a hand.", "icon": "hand", "locked": true,
-		"behavior": "strike", "sheet": "hand", "target": "random", "strike_radius": 18.0, "sheet_scale": 0.35,
+		"behavior": "strike", "sheet": "hand", "target": "random", "strike_radius": 18.0, "sheet_scale": 0.25,
 		"base": {"cooldown": 2.2, "damage": 18.0, "amount": 2, "knockback": 0.0},
 		"levels": [
 			{"desc": "1 more hand", "amount": 1},
@@ -301,7 +301,7 @@ const WEAPONS := {
 	},
 	"tentacle": {
 		"name": "Tentacle", "quote": "Don't ask where it comes from.", "icon": "tentacle", "locked": true,
-		"behavior": "strike", "sheet": "tentacle", "target": "nearest", "strike_radius": 26.0, "sheet_scale": 0.7,
+		"behavior": "strike", "sheet": "tentacle", "target": "nearest", "strike_radius": 26.0, "sheet_scale": 0.5,
 		"base": {"cooldown": 1.8, "damage": 30.0, "amount": 1, "knockback": 80.0},
 		"levels": [
 			{"desc": "+12 damage", "damage": 12.0},
@@ -392,7 +392,7 @@ const WEAPONS := {
 	},
 	"merchant_hat": {
 		"name": "Merchant's Hat", "quote": "Business is booming.", "icon": "merchant_hat", "locked": true,
-		"behavior": "orbit", "sheet": "merchant_hat", "orbit_radius": 44.0, "shot_scale": 0.3,
+		"behavior": "orbit", "sheet": "merchant_hat", "orbit_radius": 44.0, "shot_scale": 0.25,
 		"base": {"cooldown": 3.0, "damage": 8.0, "speed": 70.0, "duration": 3.0, "pierce": -1, "amount": 2},
 		"levels": [
 			{"desc": "1 more hat", "amount": 1},
@@ -477,10 +477,10 @@ const WEAPONS := {
 		"base": {"cooldown": 0.35, "damage": 55.0, "speed": 380.0, "pierce": -1, "amount": 2, "range": 360.0, "knockback": 90.0}},
 	"carpet_bombing": {"name": "Carpet Bombing", "quote": "INCOMING!!!", "icon": "crosshair_new",
 		"evolution": true, "tint": Color(1.0, 0.6, 0.4), "behavior": "strike", "sheet": "fireball_explosion", "target": "random", "warn": 0.5,
-		"strike_radius": 40.0, "sheet_scale": 2.6, "centered": true,
+		"strike_radius": 40.0, "sheet_scale": 3.0, "centered": true,
 		"base": {"cooldown": 1.5, "damage": 90.0, "amount": 5, "knockback": 80.0}},
 	"top_hat_tornado": {"name": "Top Hat Tornado", "quote": "Business is BOOMING.", "icon": "merchant_hat",
-		"evolution": true, "tint": Color(0.7, 0.7, 1.0), "behavior": "orbit", "sheet": "merchant_hat", "orbit_radius": 56.0, "shot_scale": 0.35,
+		"evolution": true, "tint": Color(0.7, 0.7, 1.0), "behavior": "orbit", "sheet": "merchant_hat", "orbit_radius": 56.0, "shot_scale": 0.25,
 		"base": {"cooldown": 0.2, "damage": 28.0, "speed": 110.0, "duration": 999.0, "pierce": -1, "amount": 8, "area": 1.3}},
 
 	# ================================================================ Unions

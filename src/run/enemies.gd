@@ -331,14 +331,18 @@ func _draw() -> void:
 		var h: float = s._h * scale_[i]
 		var flip := (player_x < pos[i].x) == (_kind_faces[k] > 0)
 		var rect := Rect2(pos[i].x - w * 0.5, pos[i].y - h + radius[i] * 0.5, w, h)
-		if flip:
-			rect = Rect2(rect.position.x + w, rect.position.y, -w, h)
 		var col := Color(1, 1, 1, _kind_alpha[k])
 		if flash[i] > 0.0:
 			col = Color(1, 0.35, 0.35, col.a)
 		elif frozen > 0.0:
 			col = Color(0.6, 0.8, 1.0, col.a)
-		draw_texture_rect_region(s._tex, rect, src, col)
+		if flip:
+			# Mirror around the enemy's centre line.
+			draw_set_transform(Vector2(pos[i].x, 0.0), 0.0, Vector2(-1, 1))
+			draw_texture_rect_region(s._tex, Rect2(-w * 0.5, rect.position.y, w, h), src, col)
+			draw_set_transform(Vector2.ZERO)
+		else:
+			draw_texture_rect_region(s._tex, rect, src, col)
 		if boss[i] == 1:
 			var bw := 30.0
 			var by := pos[i].y + radius[i] * 0.5 + 3

@@ -95,7 +95,7 @@ func draw_props(ci: CanvasItem, front: bool, split_y: float) -> void:
 			else:
 				var t := Db.tex(o.kind)
 				var sz := Vector2(t.get_size())
-				var scale := 0.6 if o.kind.begins_with("tree") else 1.0
+				var scale := 0.5 if o.kind.begins_with("tree") else 1.0
 				sz *= scale
 				ci.draw_texture_rect(t, Rect2(o.pos + Vector2(-sz.x * 0.5, -sz.y + 4), sz), false)
 

@@ -217,6 +217,8 @@ func apply_dev_flags(f: Dictionary) -> void:
 		_game_over.call_deferred()
 	if f.has("levelup"):
 		_on_level_up.call_deferred()
+	if f.has("levelup_in"):
+		get_tree().create_timer(float(f.levelup_in)).timeout.connect(_on_level_up)
 	if f.has("chest"):
 		pickups.drop("chest", player.position + Vector2(0, 4))
 	if f.has("minute"):
@@ -431,6 +433,9 @@ func add_xp(amount: float) -> void:
 # ---------------------------------------------------------------- Screens
 
 func _set_modal(c: Control) -> void:
+	# A finger held down when a menu pops up never reports lifting: let go.
+	for h in heroes.values():
+		h.reset_touch()
 	if _modal:
 		_modal.queue_free()
 	_modal = c
