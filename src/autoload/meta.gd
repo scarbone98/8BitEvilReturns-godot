@@ -26,6 +26,8 @@ func _enter_tree() -> void:
 	dev_unlock_all = Bridge.flags().has("unlockall")
 
 func _ready() -> void:
+	# Keeps saving while a menu has the game paused.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_load()
 	Bridge.signed_in.connect(_on_signed_in)
 
@@ -178,11 +180,19 @@ func save() -> void:
 	if dev_unlock_all:
 		changed.emit()
 		return
-	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	if f:
-		f.store_string(JSON.stringify(to_dict()))
+	dirty = true
+	_change_gen += 1
+	_write_local()
 	changed.emit()
 	_queue_sync()
+
+func _write_local() -> void:
+	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if f:
+		var d := to_dict()
+		d["_dirty"] = dirty
+		d["_rev"] = rev
+		f.store_string(JSON.stringify(d))
 
 func _load() -> void:
 	if not FileAccess.file_exists(SAVE_PATH):
@@ -190,37 +200,85 @@ func _load() -> void:
 	var d = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
 	if d is Dictionary:
 		_from_dict(d)
+		dirty = bool(d.get("_dirty", false))
+		rev = d.get("_rev")
 
-# Account sync: one upload at a time, batched to the end of the frame.
+# Account sync. Every change marks the profile dirty (remembered on the
+# device, so it survives a reload or a run played offline). Uploads go one at
+# a time and retry with backoff until the server has them. A save made on
+# another device meanwhile comes back as a 409 and is merged in.
+
+var dirty := false
+var _uploading := false
+var _change_gen := 0      # bumps on every change, to tell if one came in mid-upload
+var _retry_in := 0.0      # seconds until the next attempt, 0 = none waiting
+var _backoff := 2.0
+var _loaded_remote := false
+
 func _queue_sync() -> void:
-	if not Bridge.is_signed_in() or _sync_queued:
+	if not Bridge.is_signed_in() or not _loaded_remote or _sync_queued or _uploading:
 		return
 	_sync_queued = true
 	_push.call_deferred()
 
+func _process(delta: float) -> void:
+	if _retry_in > 0.0:
+		_retry_in -= delta
+		if _retry_in <= 0.0:
+			_retry_in = 0.0
+			if not _loaded_remote:
+				_on_signed_in()
+			elif dirty:
+				_queue_sync()
+
+func _retry_later() -> void:
+	_retry_in = _backoff
+	_backoff = minf(_backoff * 2.0, 60.0)
+
 func _push() -> void:
 	_sync_queued = false
+	if not dirty or _uploading:
+		return
+	_uploading = true
+	var gen := _change_gen
 	Bridge.store_save(to_dict(), rev, func(code, data):
+		_uploading = false
 		if code == 200 and data is Dictionary:
 			rev = data.get("revision", rev)
+			_backoff = 2.0
+			if gen == _change_gen:
+				dirty = false
+				_write_local()
+			else:
+				_queue_sync()  # something changed while uploading
 		elif code == 409 and data is Dictionary:
-			# Another device saved first: take theirs, then keep whatever is better.
-			_merge_remote(data.get("save"), data.get("revision")))
+			# Another device saved first: merge theirs in, then upload the result.
+			_merge_remote(data.get("save"), data.get("revision"))
+		else:
+			_retry_later())
 
 func _on_signed_in() -> void:
 	Bridge.load_save(func(code, data):
 		if code == 200 and data is Dictionary:
-			_merge_remote(data.get("save"), data.get("revision")))
+			_loaded_remote = true
+			_backoff = 2.0
+			_merge_remote(data.get("save"), data.get("revision"))
+		else:
+			_retry_later())
 
 ## Combines the account save with this device's: unlocks and feats are
-## unioned, counters take the larger value, silver takes the account's.
+## unioned, counters take the larger value. Silver is the account's unless
+## this device has changes the account hasn't seen yet.
 func _merge_remote(remote, remote_rev) -> void:
 	rev = int(remote_rev) if remote_rev != null else null
 	if not (remote is Dictionary) or remote.is_empty():
 		save()  # first sign-in: upload what this device has
 		return
 	var mine := to_dict()
+	var had_changes := dirty
 	_from_dict(remote)
+	if had_changes:
+		silver = int(mine.silver)
 	for id in mine.unlocked:
 		if not unlocked.has(id): unlocked.append(id)
 	for id in mine.feats:
@@ -236,4 +294,10 @@ func _merge_remote(remote, remote_rev) -> void:
 	for k in mine.kinds:
 		kinds[k] = maxi(int(kinds.get(k, 0)), int(mine.kinds[k]))
 	best_seconds = maxi(best_seconds, int(mine.best))
-	save()
+	# Upload only if the merge gave the account something new.
+	if to_dict().hash() != remote.hash() or had_changes:
+		save()
+	else:
+		dirty = false
+		_write_local()
+		changed.emit()

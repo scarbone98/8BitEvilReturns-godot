@@ -38,6 +38,14 @@ func is_signed_in() -> bool:
 	return user_id != "" and api_base != ""
 
 func _ready() -> void:
+	# Keeps saving while a menu has the game paused.
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	var f := flags()
+	if f.has("signin"):
+		# Dev: act signed in as this user id against `server` (for sync tests).
+		user_id = str(f.signin)
+		api_base = server_url()
+		signed_in.emit.call_deferred()
 	if not is_web():
 		return
 	_on_message = JavaScriptBridge.create_callback(_handle_message)
