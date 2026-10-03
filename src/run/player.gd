@@ -32,6 +32,7 @@ var allowed: Callable                # id -> bool: which locked content this pla
 var inv_rev := 0                     # bumps when weapons/passives change (co-op sync)
 var max_hp_override := -1.0          # guests show the host's numbers
 var net_target := Vector2.ZERO       # remote heroes glide toward their latest position
+var away := false                    # co-op: this player's connection dropped (seat held)
 # This hero's share of the run, for their results and feats
 var kills := 0
 var candy := 0
@@ -132,7 +133,8 @@ func step(delta: float, simulate := true) -> void:
 	if mode == "puppet":
 		queue_redraw()
 		return
-	if dead:
+	if dead or away:
+		# Away heroes stand still, untouchable, until their player is back.
 		queue_redraw()
 		return
 	if mode == "remote":
@@ -162,14 +164,14 @@ func step(delta: float, simulate := true) -> void:
 ## grab nearby candy when it's safe.
 func _bot_dir() -> Vector2:
 	var e = run.enemies
-	var away := Vector2.ZERO
+	var flee := Vector2.ZERO
 	var crowd := 0
 	for i in e.query_circle(position, 14.0):
 		var off: Vector2 = position - e.pos[i]
-		away += off.normalized()
+		flee += off.normalized()
 		crowd += 1
 	if crowd > 0:
-		return (away.normalized() + away.orthogonal().normalized() * 0.4).limit_length(1.0)
+		return (flee.normalized() + flee.orthogonal().normalized() * 0.4).limit_length(1.0)
 	for p in run.pickups.list:
 		if p.pos.distance_to(position) < 70.0:
 			return (p.pos - position).normalized()
@@ -182,7 +184,7 @@ func _bot_dir() -> Vector2:
 	return Vector2.RIGHT.rotated(_anim * 0.4) * 0.5
 
 func take_hit(amount: float) -> void:
-	if _invuln > 0.0 or dead:
+	if _invuln > 0.0 or dead or away:
 		return
 	_invuln = HIT_INVULN
 	_hurt_flash = 0.2
@@ -350,6 +352,8 @@ func _draw() -> void:
 	var col := Color.WHITE
 	if dead:
 		col = Color(0.6, 0.7, 1.0, 0.35)
+	elif away:
+		col = Color(1, 1, 1, 0.4)
 	elif _hurt_flash > 0.0:
 		col = Color(1, 0.3, 0.3)
 	elif _invuln > 0.0 and int(_invuln * 20) % 2 == 0:
@@ -359,9 +363,10 @@ func _draw() -> void:
 		return
 	if mode != "local" and player_name != "":
 		var f: Font = run.popups.font
-		var tw := f.get_string_size(player_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 8).x
-		draw_string_outline(f, Vector2(-tw * 0.5, -h - 1), player_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, 2, Color.BLACK)
-		draw_string(f, Vector2(-tw * 0.5, -h - 1), player_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(0.8, 0.9, 1.0))
+		var tag := player_name + (" (away)" if away else "")
+		var tw := f.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 8).x
+		draw_string_outline(f, Vector2(-tw * 0.5, -h - 1), tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, 2, Color.BLACK)
+		draw_string(f, Vector2(-tw * 0.5, -h - 1), tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(1, 0.8, 0.5) if away else Color(0.8, 0.9, 1.0))
 	# Health bar under the hero, like the original.
 	var frac := clampf(hp / maxf(max_hp(), 1.0), 0.0, 1.0)
 	draw_rect(Rect2(-8, 4, 16, 2), Color(0, 0, 0, 0.7))

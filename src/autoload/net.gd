@@ -5,32 +5,55 @@ extends Node
 ##
 ## Packets: byte 0 is the seat (the host writes who it's for, 255 = everyone;
 ## the server rewrites it to who sent it), byte 1 the packet type, then data.
+##
+## Dropping out doesn't end anything: the server holds the seat for a while
+## and gives each player a token to take it back. If the socket closes, this
+## reconnects with backoff and rejoins by itself. The token is also saved on
+## the device so a guest can rejoin after reloading the page.
 
 signal room_changed            # lobby roster, stage or our seat changed
 signal started(stage: String, players: Array)
-signal closed(reason: String)  # host left, idle, or connection lost
+signal closed(reason: String)  # host left, idle, seat lost, or gave up reconnecting
 signal failed(message: String)
 signal packet(from: int, kind: int, data: PackedByteArray)
 signal left(slot: int)
+signal away(slot: int)         # another player dropped (their seat is held)
+signal back(slot: int)         # ...and came back
+signal connection_changed(online: bool)  # our own link dropped / returned
 
 const BROADCAST := 255
 const PATH := "/8bitevilreturns/v2/ws"
+var session_path := "user://coop_session.json"
+const GIVE_UP_AFTER := 95.0  # the server holds a seat for 90s in a game
 
 var ws: WebSocketPeer
 var code := ""
 var slot := -1
+var token := ""
 var is_host := false
-var players: Array = []        # [{slot, name, hero}]
+var players: Array = []        # [{slot, name, hero, away}]
 var stage := "graveyard"
 var in_game := false
+var reconnecting := false
 var _pending: Dictionary = {}  # first message to send once the socket opens
 var _was_open := false
+var _retry_in := 0.0
+var _backoff := 0.5
+var _down_for := 0.0
+var _drop_at := -1.0           # dev flag drop_at=seconds: cut the link once, to test reconnecting
+var _alive_for := 0.0
 
 func active() -> bool:
-	return ws != null and slot >= 0
+	return slot >= 0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	var f := Bridge.flags()
+	if f.has("drop_at"):
+		_drop_at = float(f.drop_at)
+	if f.has("session"):
+		# Dev: separate saved seats for several copies on one machine.
+		session_path = "user://coop_session_%s.json" % str(f.session).validate_filename()
 
 func _url() -> String:
 	var base := Bridge.server_url()
@@ -48,31 +71,41 @@ func pick(fields: Dictionary) -> void:
 func start_game() -> void:
 	_send_json({"type": "start"})
 
+## Leaving on purpose: the seat is freed for good.
 func leave() -> void:
 	if ws:
 		_send_json({"type": "leave"})
 		ws.close()
+	_forget_session()
 	_reset()
 
 func _reset() -> void:
 	ws = null
 	code = ""
 	slot = -1
+	token = ""
 	is_host = false
 	players = []
 	in_game = false
+	reconnecting = false
 	_was_open = false
+	_retry_in = 0.0
 
 func _open(first: Dictionary) -> void:
-	if ws:
+	if ws and not reconnecting:
 		leave()
 	ws = WebSocketPeer.new()
 	ws.inbound_buffer_size = 1 << 20
 	ws.outbound_buffer_size = 1 << 20
+	_was_open = false
+	_alive_for = 0.0
 	var err := ws.connect_to_url(_url())
 	if err != OK:
 		ws = null
-		failed.emit("Couldn't reach the server.")
+		if reconnecting:
+			_schedule_retry()
+		else:
+			failed.emit("Couldn't reach the server.")
 		return
 	_pending = first
 
@@ -82,7 +115,7 @@ func _send_json(msg: Dictionary) -> void:
 
 ## Host: send to one seat or BROADCAST. Guest: `to` is ignored (always the host).
 func send(to: int, kind: int, data: PackedByteArray) -> void:
-	if not ws or ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
+	if not ws or ws.get_ready_state() != WebSocketPeer.STATE_OPEN or reconnecting:
 		return
 	var out := PackedByteArray([to, kind])
 	out.append_array(data)
@@ -92,7 +125,82 @@ func send(to: int, kind: int, data: PackedByteArray) -> void:
 func send_json(to: int, msg: Dictionary) -> void:
 	send(to, 74, JSON.stringify(msg).to_utf8_buffer())
 
-func _process(_delta: float) -> void:
+# ---------------------------------------------------------------- Reconnecting
+
+func _lost_link() -> void:
+	if not reconnecting:
+		reconnecting = true
+		_down_for = 0.0
+		_backoff = 0.5
+		connection_changed.emit(false)
+	_schedule_retry()
+
+func _schedule_retry() -> void:
+	ws = null
+	_retry_in = _backoff
+	_backoff = minf(_backoff * 2.0, 5.0)
+
+func _give_up(reason: String) -> void:
+	_forget_session()
+	_reset()
+	closed.emit(reason)
+
+# ---------------------------------------------------------------- Saved session (rejoin after a reload)
+
+func _save_session() -> void:
+	var f := FileAccess.open(session_path, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify({"code": code, "token": token, "host": is_host, "at": Time.get_unix_time_from_system()}))
+
+func _forget_session() -> void:
+	if FileAccess.file_exists(session_path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(session_path))
+
+## A recent co-op seat this device can take back, or {}.
+func saved_session() -> Dictionary:
+	if not FileAccess.file_exists(session_path):
+		return {}
+	var d = JSON.parse_string(FileAccess.get_file_as_string(session_path))
+	if not (d is Dictionary) or Time.get_unix_time_from_system() - float(d.get("at", 0)) > GIVE_UP_AFTER:
+		_forget_session()
+		return {}
+	return d
+
+func rejoin(session: Dictionary) -> void:
+	code = str(session.code)
+	token = str(session.token)
+	_open({"type": "rejoin", "code": code, "token": token})
+
+## A host that reloaded can't bring its fight back: close the room now so the
+## others aren't left waiting.
+func abandon(session: Dictionary) -> void:
+	_forget_session()
+	var sock := WebSocketPeer.new()
+	if sock.connect_to_url(_url()) == OK:
+		_abandon_step(sock, session, 0)
+
+func _abandon_step(sock: WebSocketPeer, session: Dictionary, tries: int) -> void:
+	sock.poll()
+	if sock.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		sock.send_text(JSON.stringify({"type": "rejoin", "code": session.code, "token": session.token}))
+		sock.send_text(JSON.stringify({"type": "leave"}))
+		get_tree().create_timer(0.5, true).timeout.connect(sock.close)
+	elif tries < 100 and sock.get_ready_state() == WebSocketPeer.STATE_CONNECTING:
+		get_tree().create_timer(0.05, true).timeout.connect(_abandon_step.bind(sock, session, tries + 1))
+
+# ---------------------------------------------------------------- Polling
+
+func _process(delta: float) -> void:
+	if reconnecting:
+		_down_for += delta
+		if _down_for > GIVE_UP_AFTER:
+			_give_up("lost")
+			return
+		if not ws:
+			_retry_in -= delta
+			if _retry_in <= 0.0:
+				_open({"type": "rejoin", "code": code, "token": token})
+			return
 	if not ws:
 		return
 	ws.poll()
@@ -103,6 +211,12 @@ func _process(_delta: float) -> void:
 			if not _pending.is_empty():
 				_send_json(_pending)
 				_pending = {}
+		_alive_for += delta
+		if _drop_at > 0.0 and in_game and _alive_for > _drop_at:
+			_drop_at = -1.0
+			print("[net] dropping the connection on purpose (drop_at)")
+			ws.close()
+			return
 		while ws and ws.get_available_packet_count() > 0:
 			var data := ws.get_packet()
 			if ws.was_string_packet():
@@ -110,13 +224,13 @@ func _process(_delta: float) -> void:
 			elif data.size() >= 2:
 				packet.emit(data[0], data[1], data.slice(2))
 	elif state == WebSocketPeer.STATE_CLOSED:
-		var had_room := slot >= 0
-		var opened := _was_open
-		_reset()
-		if had_room:
-			closed.emit("lost")
-		elif not opened:
-			failed.emit("Couldn't reach the server.")
+		if slot >= 0 or reconnecting:
+			_lost_link()  # we had a seat: get it back
+		else:
+			var opened := _was_open
+			_reset()
+			if not opened:
+				failed.emit("Couldn't reach the server.")
 
 func _on_text(text: String) -> void:
 	var m = JSON.parse_string(text)
@@ -126,10 +240,20 @@ func _on_text(text: String) -> void:
 		"room":
 			code = str(m.code)
 			slot = int(m.slot)
+			token = str(m.get("token", token))
 			is_host = bool(m.host)
 			players = m.players
 			stage = str(m.get("stage", "graveyard"))
+			_save_session()
+			if reconnecting:
+				reconnecting = false
+				print("[net] reconnected to ", code)
+				connection_changed.emit(true)
 			room_changed.emit()
+			# Rejoining a game that's already going (e.g. after a reload).
+			if bool(m.get("started", false)) and not in_game:
+				in_game = true
+				started.emit(stage, players)
 		"start":
 			in_game = true
 			stage = str(m.stage)
@@ -137,9 +261,14 @@ func _on_text(text: String) -> void:
 			started.emit(stage, players)
 		"left":
 			left.emit(int(m.slot))
+		"away":
+			away.emit(int(m.slot))
+		"back":
+			back.emit(int(m.slot))
 		"closed":
-			var reason := str(m.get("reason", ""))
-			_reset()
-			closed.emit(reason)
+			_give_up(str(m.get("reason", "")))
 		"error":
-			failed.emit(str(m.get("message", "Something went wrong.")))
+			if str(m.get("code")) == "gone":
+				_give_up("gone")
+			else:
+				failed.emit(str(m.get("message", "Something went wrong.")))

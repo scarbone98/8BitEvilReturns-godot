@@ -82,6 +82,16 @@ func show_title() -> void:
 	box.add_child(SheetView.new(Db.CHARACTERS[Meta.selected].run, Vector2(0, 40)))
 	var play := UI.button("PLAY", show_select, 28)
 	box.add_child(play)
+	# A co-op game this device dropped out of: offer to jump back in.
+	var session := Net.saved_session()
+	if not session.is_empty():
+		if session.get("host", false):
+			Net.abandon(session)  # a host's fight can't survive a reload
+		else:
+			box.add_child(UI.button("REJOIN ROOM " + str(session.code), func():
+				_watch_net()
+				Net.rejoin(session)
+				show_lobby(), 26))
 	box.add_child(UI.button("CO-OP", show_coop, 22))
 	box.add_child(UI.button("POWER UPS", show_powerups, 22))
 	box.add_child(UI.button("COLLECTION", show_collection, 22))
@@ -461,6 +471,10 @@ func show_lobby() -> void:
 	code_l.tree_exiting.connect(func(): Net.room_changed.disconnect(refresh))
 
 func _start_coop(stage_id: String, players: Array) -> void:
+	# Play the hero the room has us down as (matters when rejoining after a reload).
+	for p in players:
+		if int(p.slot) == Net.slot and Db.CHARACTERS.has(str(p.hero)):
+			Meta.selected = str(p.hero)
 	var run := RunScript.new()
 	run.process_mode = Node.PROCESS_MODE_PAUSABLE
 	_swap(run)
@@ -486,6 +500,10 @@ func _dev_coop(f: Dictionary) -> void:
 				print("[room] ", Net.code, " players ", Net.players.size())
 			if Net.players.size() >= want and not Net.in_game:
 				Net.start_game())
+	elif f.coop == "rejoin":
+		var session := Net.saved_session()
+		print("[net] rejoining ", session.get("code", "?"))
+		Net.rejoin(session)
 	else:
 		Net.join(str(f.get("room", "")), _my_name(), Meta.selected)
 	show_lobby()

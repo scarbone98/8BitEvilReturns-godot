@@ -27,6 +27,11 @@ func _ready() -> void:
 	add_child(pause)
 
 var _toasts: Array = []  # [text, colour, seconds left]
+var _banner := ""
+
+## A message that stays up until cleared with "" (e.g. "Reconnecting...").
+func banner(text: String) -> void:
+	_banner = text
 
 ## A short message under the timer (chest contents in co-op, "you're down"...).
 func toast(text: String, col := UI.PALE) -> void:
@@ -85,6 +90,11 @@ func _draw() -> void:
 		if fill > 0.0:
 			var t := Db.tex("heart")
 			draw_texture_rect_region(t, Rect2(r.position, Vector2(10 * fill, 10)), Rect2(0, 0, 16 * fill, 16))
+	if _banner != "":
+		var by := view.y * 0.4
+		draw_rect(Rect2(0, by - 14, W, 22), Color(0, 0, 0, 0.6))
+		var dots := ".".repeat(int(Time.get_ticks_msec() / 400) % 4)
+		_text(Vector2(W * 0.5, by + 2), _banner.trim_suffix("...") + dots, 8, UI.GOLD, HORIZONTAL_ALIGNMENT_CENTER)
 	var ty := 64.0
 	for t in _toasts:
 		_text(Vector2(W * 0.5, ty), t[0], 8, Color(t[1], clampf(t[2], 0.0, 1.0)), HORIZONTAL_ALIGNMENT_CENTER, body_font)

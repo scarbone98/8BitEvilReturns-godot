@@ -47,6 +47,8 @@ var _spawn_acc: Array[float] = []
 var _events_done := {}
 var _pending_levels := 0
 var _awaiting := {}  # host: seats still choosing a level-up card
+var _sent_opts := {} # host: the cards each remote seat was offered
+var net_paused := false  # host: our own connection dropped, so the fight waits
 var _modal: Control
 var autoplay := false
 var dev := false  # dev/test runs never save
@@ -145,8 +147,38 @@ func _add_hero(seat: int, char_id: String, hero_mode: String, name: String):
 	heroes[seat] = h
 	return h
 
+## Host: a player's connection dropped. Their hero waits, untouchable; if
+## they were choosing a card, they get the first one so nobody's held up.
+func on_peer_away(seat: int) -> void:
+	var h = heroes.get(seat)
+	if h == null:
+		return
+	h.away = true
+	print("[net] seat %d away" % seat)
+	hud.toast("%s lost connection" % h.player_name, UI.DIM)
+	if _awaiting.has(seat):
+		var opts: Array = _sent_opts.get(seat, [])
+		_picked(seat, opts[0] if not opts.is_empty() else "")
+
+func on_peer_back(seat: int) -> void:
+	var h = heroes.get(seat)
+	if h == null:
+		return
+	h.away = false
+	print("[net] seat %d back" % seat)
+	h._invuln = 2.0
+	hud.toast("%s is back!" % h.player_name, UI.PALE)
+
+## Our own link dropped or came back.
+func on_connection(online: bool) -> void:
+	print("[net] %s %s" % [mode, "back online" if online else "connection lost, paused" if is_host() else "connection lost"])
+	if is_host():
+		net_paused = not online
+	hud.banner("" if online else "Reconnecting...")
+
 ## A co-op player left mid-run.
 func remove_hero(seat: int) -> void:
+	print("[net] seat %d left for good" % seat)
 	var h = heroes.get(seat)
 	if h == null or h == player:
 		return
@@ -159,8 +191,9 @@ func remove_hero(seat: int) -> void:
 	if not is_guest() and living_heroes().is_empty():
 		_game_over()
 
+## Heroes still in the fight: not down, and their player is connected.
 func living_heroes() -> Array:
-	return heroes.values().filter(func(h): return not h.dead)
+	return heroes.values().filter(func(h): return not h.dead and not h.away)
 
 ## Dev/testing: `give` adds weapons or passives (comma list, repeat an id to
 ## level it), `minute` skips ahead, `autoplay` lets a bot play.
@@ -207,7 +240,7 @@ func view_rect() -> Rect2:
 	return Rect2(camera.position - sz * 0.5, sz)
 
 func _process(delta: float) -> void:
-	if ended or get_tree().paused:
+	if ended or get_tree().paused or net_paused:
 		return
 	if _bench > 0:
 		var t0 := Time.get_ticks_usec()
@@ -428,8 +461,9 @@ func _on_level_up() -> void:
 ## Host/solo: everyone alive picks a card. Remote players get theirs over the network.
 func _next_level_up() -> void:
 	_awaiting = {}
+	_sent_opts = {}
 	for seat in heroes:
-		if not heroes[seat].dead:
+		if not heroes[seat].dead and not heroes[seat].away:
 			_awaiting[seat] = true
 	if _awaiting.is_empty():
 		_awaiting[player.slot] = true
@@ -437,7 +471,8 @@ func _next_level_up() -> void:
 		var h = heroes[seat]
 		if h == player:
 			continue
-		netsync.send_levelup(seat, h.upgrade_options(3), level)
+		_sent_opts[seat] = h.upgrade_options(3)
+		netsync.send_levelup(seat, _sent_opts[seat], level)
 	if _awaiting.has(player.slot):
 		show_level_up(player.upgrade_options(3), func(id): _picked(player.slot, id))
 	else:
@@ -464,7 +499,7 @@ func _check_picks_done() -> void:
 	_pending_levels -= 1
 	# Downed heroes come back with the team's level-up.
 	for h in heroes.values():
-		if h.dead:
+		if h.dead and not h.away:
 			h.revive(0.5)
 			on_revive(h)
 	if _pending_levels > 0:

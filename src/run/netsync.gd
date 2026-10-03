@@ -42,6 +42,19 @@ func _ready() -> void:
 	Net.packet.connect(_on_packet)
 	Net.left.connect(func(seat): run.remove_hero(seat))
 	Net.closed.connect(func(reason): run.connection_lost(reason))
+	Net.connection_changed.connect(run.on_connection)
+	if run.is_host():
+		Net.away.connect(run.on_peer_away)
+		Net.back.connect(func(seat):
+			_inv_sent.erase(seat)  # resend their inventory
+			run.on_peer_back(seat))
+	else:
+		Net.away.connect(func(seat):
+			if seat == 0:
+				run.hud.banner("Host reconnecting..."))
+		Net.back.connect(func(seat):
+			if seat == 0:
+				run.hud.banner(""))
 	if run.is_guest():
 		var unlocked := []
 		for id in Db.WEAPONS.keys() + Db.PASSIVES.keys():
