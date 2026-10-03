@@ -108,7 +108,7 @@ func explosion(w: Weapon, at: Vector2, r: float, dmg: float) -> void:
 # ---------------------------------------------------------------- Update
 
 func hit(w: Weapon, i: int, dmg: float, from: Vector2, kb: float) -> void:
-	var killed: bool = run.enemies.hurt(i, dmg, from, kb)
+	var killed: bool = run.enemies.hurt(i, dmg, from, kb, w.player.slot)
 	var ls: float = w.def.get("lifesteal", 0.0)
 	if ls > 0.0:
 		w.player.heal(dmg * ls)
@@ -257,91 +257,131 @@ func step(delta: float) -> void:
 	queue_redraw()
 
 # ---------------------------------------------------------------- Drawing
+# Drawing goes through "ops" so the host can send guests exactly what it draws:
+#   [OP_SPRITE, sheet, frame, centre, rotation, scale (x<0 = flipped), colour]
+#   [OP_CIRCLE, centre, radius, colour]          a filled aura with a rim
+#   [OP_RING, centre, radius, colour]            an expanding nova ring
+#   [OP_ZAP, points, colour]                     chain / lamp lightning
+#   [OP_FLASH, alpha]                            the whole screen flashes
+#   [OP_PUDDLE, centre, radius, colour]          a blood puddle
 
-func _draw() -> void:
-	var view: Rect2 = run.view_rect().grow(64)
+const OP_SPRITE := 0
+const OP_CIRCLE := 1
+const OP_RING := 2
+const OP_ZAP := 3
+const OP_FLASH := 4
+const OP_PUDDLE := 5
+
+var remote_ops: Array = []  # guests: the latest ops from the host
+
+func _sprite(out: Array, sheet: String, frame: int, center: Vector2, rot: float, sc: Vector2, col: Color) -> void:
+	out.append([OP_SPRITE, sheet, frame, center, rot, sc, col])
+
+## Everything to draw inside `view`, as ops.
+func ops(view: Rect2) -> Array:
+	var out := []
+	var cull := view.grow(64)
 	for s in list:
 		if s.delay > 0.0:
 			continue
 		var col: Color = s.tint
 		match s.type:
 			"aura":
-				var c: Color = s.w.def.get("color", Color.WHITE)
-				draw_circle(s.pos, s.radius, Color(c, 0.13))
-				draw_arc(s.pos, s.radius, 0, TAU, 40, Color(c, 0.45 + sin(s.t * 6.0) * 0.15), 1.0)
+				out.append([OP_CIRCLE, s.pos, s.radius, Color(s.w.def.get("color", Color.WHITE), 0.45 + sin(s.t * 6.0) * 0.15)])
 				continue
 			"nova":
-				var c: Color = s.w.def.get("color", Color.WHITE)
-				var a: float = 1.0 - s.t / s.life
-				draw_arc(s.pos, maxf(s.radius, 1.0), 0, TAU, 48, Color(c, a), 3.0)
-				draw_arc(s.pos, maxf(s.radius - 4.0, 1.0), 0, TAU, 48, Color(c, a * 0.4), 2.0)
+				out.append([OP_RING, s.pos, s.radius, Color(s.w.def.get("color", Color.WHITE), 1.0 - s.t / s.life)])
 				continue
 			"zap":
-				var c: Color = s.w.def.get("color", Color(0.75, 0.9, 1.0))
-				var a: float = 1.0 - s.t / s.life
-				for k in range(1, s.points.size()):
-					_jagged(s.points[k - 1], s.points[k], Color(c, a))
+				out.append([OP_ZAP, s.points, Color(s.w.def.get("color", Color(0.75, 0.9, 1.0)), 1.0 - s.t / s.life)])
 				continue
 			"flash":
-				var a: float = 0.35 * (1.0 - s.t / s.life)
-				draw_rect(run.view_rect(), Color(1, 1, 0.85, a))
+				var a: float = 1.0 - s.t / s.life
+				out.append([OP_FLASH, 0.35 * a])
 				if s.w.def.has("sheet"):
-					var sh := Db.sheet(s.w.def.sheet)
-					var p: Vector2 = s.w.player.position + Vector2(-16, -48)
-					draw_texture_rect_region(sh._tex, Rect2(p, Vector2(32, 32)), Db.frame_rect(sh, s.t), Color(1, 1, 1, 1.0 - s.t / s.life))
+					var fsh := Db.sheet(s.w.def.sheet)
+					var f := int(s.t * fsh.fps) % int(fsh.frames)
+					_sprite(out, s.w.def.sheet, f, s.w.player.position + Vector2(0, -32), 0.0, Vector2(0.5, 0.5), Color(1, 1, 1, a))
 				continue
-		if s.sheet == "" or not view.has_point(s.pos):
+		if s.sheet == "" or not cull.has_point(s.pos):
 			continue
 		var sh := Db.sheet(s.sheet)
-		var src := Db.frame_rect(sh, s.t)
+		var frame := int(s.t * sh.fps) % int(sh.frames)
 		var sc: float = s.scale
-		var w: float = sh._w * sc
-		var h: float = sh._h * sc
 		match s.type:
-			"fx":
+			"fx", "slash":
 				# One-shot animations play through exactly once.
-				var f := mini(int(s.t / s.life * sh.frames), sh.frames - 1)
-				src = Rect2(f * sh._w, 0, sh._w, sh._h)
-				var off := Vector2(-w * 0.5, -h + 6) if s.get("anchor") == "bottom" else Vector2(-w, -h) * 0.5
-				draw_texture_rect_region(sh._tex, Rect2(s.pos + off, Vector2(w, h)), src, col)
+				frame = mini(int(s.t / s.life * sh.frames), sh.frames - 1)
+				var center: Vector2 = s.pos
+				if s.type == "fx" and s.get("anchor") == "bottom":
+					center += Vector2(0, -sh._h * sc * 0.5 + 6)
+				_sprite(out, s.sheet, frame, center, s.rot if s.type == "slash" else 0.0, Vector2(sc, sc), col)
 			"warn":
-				var pulse: float = 1.0 + sin(s.t * 20.0) * 0.15
-				var sz := Vector2(16, 16) * pulse
-				draw_texture_rect_region(sh._tex, Rect2(s.pos - sz * 0.5, sz), src, Color(1, 1, 1, 0.9))
+				var pulse: float = (1.0 + sin(s.t * 20.0) * 0.15) * 16.0 / sh._w
+				_sprite(out, s.sheet, frame, s.pos, 0.0, Vector2(pulse, pulse), Color(1, 1, 1, 0.9))
 			"pool":
 				col.a = clampf((s.life - s.t) * 2.0, 0.0, 0.85)
 				if s.sheet == "blood_drop":
-					# Blood is a soft puddle, not the 8px sprite blown up.
-					var c := Color(0.55, 0.02, 0.06, col.a * 0.8) * Color(col.r, col.g, col.b, 1.0)
-					draw_circle(s.pos, s.radius, c)
-					draw_circle(s.pos + Vector2(-s.radius * 0.3, -s.radius * 0.3), s.radius * 0.35, Color(0.9, 0.2, 0.25, col.a * 0.5))
-					continue
-				var pw: float = s.radius * 2.2
-				draw_texture_rect_region(sh._tex, Rect2(s.pos - Vector2(pw, pw) * 0.5, Vector2(pw, pw)), src, col)
+					out.append([OP_PUDDLE, s.pos, s.radius, col])
+				else:
+					var k: float = s.radius * 2.2 / sh._w
+					_sprite(out, s.sheet, frame, s.pos, 0.0, Vector2(k, k), col)
 			"turret":
 				col.a = clampf((s.life - s.t) * 2.0, 0.0, 1.0)
-				draw_texture_rect_region(sh._tex, Rect2(s.pos + Vector2(-sh._w * 0.5, -sh._h + 4), Vector2(sh._w, sh._h)), src, col)
+				_sprite(out, s.sheet, frame, s.pos + Vector2(0, -sh._h * 0.5 + 4), 0.0, Vector2.ONE, col)
 			"bat", "wisp":
-				var flip: bool = s.vel.x < 0
 				if s.rot != 0.0:
-					draw_set_transform(s.pos, s.rot, Vector2(sc, sc))
-					draw_texture_rect_region(sh._tex, Rect2(-sh._w * 0.5, -sh._h * 0.5, sh._w, sh._h), src, col)
-					draw_set_transform(Vector2.ZERO)
-					continue
-				var r := Rect2(s.pos - Vector2(w, h) * 0.5, Vector2(w, h))
-				if flip:
-					r = Rect2(r.position.x + w, r.position.y, -w, h)
-				draw_texture_rect_region(sh._tex, r, src, col)
-			"slash":
-				var f := mini(int(s.t / s.life * sh.frames), sh.frames - 1)
-				src = Rect2(f * sh._w, 0, sh._w, sh._h)
-				draw_set_transform(s.pos, s.rot, Vector2(sc, sc))
-				draw_texture_rect_region(sh._tex, Rect2(-sh._w * 0.5, -sh._h * 0.5, sh._w, sh._h), src, col)
-				draw_set_transform(Vector2.ZERO)
+					_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col)
+				else:
+					_sprite(out, s.sheet, frame, s.pos, 0.0, Vector2(-sc if s.vel.x < 0 else sc, sc), col)
+			"bullet":
+				_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col)
 			_:
-				draw_set_transform(s.pos, s.rot, Vector2(sc, sc))
-				draw_texture_rect_region(sh._tex, Rect2(-sh._w * 0.5, -sh._h * 0.5, sh._w, sh._h), src, col)
-				draw_set_transform(Vector2.ZERO)
+				_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col)
+	return out
+
+func _draw() -> void:
+	var view: Rect2 = run.view_rect()
+	exec_ops(remote_ops if run.is_guest() else ops(view), view)
+
+func exec_ops(list_ops: Array, view: Rect2) -> void:
+	for op in list_ops:
+		match op[0]:
+			OP_SPRITE:
+				var sh := Db.sheet(op[1])
+				var src := Rect2(int(op[2]) % int(sh.frames) * sh._w, 0, sh._w, sh._h)
+				var sc: Vector2 = op[5]
+				if op[4] == 0.0 and sc.y > 0.0:
+					# Unrotated: draw straight, flipping with a negative width.
+					var w: float = sh._w * absf(sc.x)
+					var h: float = sh._h * sc.y
+					var r := Rect2(op[3] - Vector2(w, h) * 0.5, Vector2(w, h))
+					if sc.x < 0.0:
+						r = Rect2(r.position.x + w, r.position.y, -w, h)
+					draw_texture_rect_region(sh._tex, r, src, op[6])
+				else:
+					draw_set_transform(op[3], op[4], sc)
+					draw_texture_rect_region(sh._tex, Rect2(-sh._w * 0.5, -sh._h * 0.5, sh._w, sh._h), src, op[6])
+					draw_set_transform(Vector2.ZERO)
+			OP_CIRCLE:
+				var c: Color = op[3]
+				draw_circle(op[1], op[2], Color(c, 0.13))
+				draw_arc(op[1], op[2], 0, TAU, 40, c, 1.0)
+			OP_RING:
+				var c: Color = op[3]
+				draw_arc(op[1], maxf(op[2], 1.0), 0, TAU, 48, c, 3.0)
+				draw_arc(op[1], maxf(op[2] - 4.0, 1.0), 0, TAU, 48, Color(c, c.a * 0.4), 2.0)
+			OP_ZAP:
+				var pts: PackedVector2Array = op[1]
+				for k in range(1, pts.size()):
+					_jagged(pts[k - 1], pts[k], op[2])
+			OP_FLASH:
+				draw_rect(view, Color(1, 1, 0.85, op[1]))
+			OP_PUDDLE:
+				var col: Color = op[3]
+				var c := Color(0.55, 0.02, 0.06, col.a * 0.8) * Color(col.r, col.g, col.b, 1.0)
+				draw_circle(op[1], op[2], c)
+				draw_circle(op[1] + Vector2(-op[2] * 0.3, -op[2] * 0.3), op[2] * 0.35, Color(0.9, 0.2, 0.25, col.a * 0.5))
 
 ## A lightning-style line between two points.
 func _jagged(a: Vector2, b: Vector2, c: Color) -> void:

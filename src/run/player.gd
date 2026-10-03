@@ -1,7 +1,11 @@
 extends Node2D
-## The hero: movement, health, experience and the stat block weapons read.
+## A hero: movement, health and the stat block its weapons read. Experience
+## and level belong to the run (shared by the team in co-op).
+##
+## mode "local"  - this device's hero: reads input (or the test bot)
+##      "remote" - on the host, another player's hero, moved by their packets
+##      "puppet" - on a guest, someone else's hero, drawn from snapshots
 
-signal leveled_up
 signal died
 signal hp_changed
 
@@ -20,6 +24,25 @@ const STAT_DEFAULTS := {
 }
 
 var run
+var slot := 0
+var mode := "local"
+var player_name := ""
+var view_size := Vector2(240, 400)  # this player's screen, for what they can see
+var allowed: Callable                # id -> bool: which locked content this player has
+var inv_rev := 0                     # bumps when weapons/passives change (co-op sync)
+var max_hp_override := -1.0          # guests show the host's numbers
+var net_target := Vector2.ZERO       # remote heroes glide toward their latest position
+# This hero's share of the run, for their results and feats
+var kills := 0
+var candy := 0
+var silver_found := 0
+var chests := 0
+var bosses := 0
+var evolutions := 0
+var unions := 0
+var weapons_full := 0
+var kind_kills := {}
+var made: Array = []
 var character: Dictionary
 var char_id := ""
 var bonus := {}        # power-up stats, fixed for the run
@@ -28,9 +51,6 @@ var healed := 0.0      # for feats
 var distance := 0.0
 var stats := {}
 var hp := 100.0
-var level := 1
-var xp := 0.0
-var xp_next := 5.0
 var facing := Vector2.RIGHT
 var moving := false
 var weapons := {}   # id -> Weapon
@@ -53,6 +73,8 @@ func setup(id: String, powerup_stats := {}) -> void:
 	recalc_stats()
 	hp = max_hp()
 	revivals = int(stats.revival)
+	if not allowed.is_valid():
+		allowed = Meta.content_unlocked
 
 func recalc_stats() -> void:
 	var old_max := max_hp() if not stats.is_empty() else 0.0
@@ -72,6 +94,8 @@ func recalc_stats() -> void:
 	hp_changed.emit()
 
 func max_hp() -> float:
+	if max_hp_override >= 0.0:
+		return max_hp_override
 	return stats.max_hp * (1.0 + stats.max_hp_mul)
 
 func magnet_radius() -> float:
@@ -101,27 +125,37 @@ func _unhandled_input(event: InputEvent) -> void:
 func joystick() -> Dictionary:
 	return {"active": _touch_id != -1, "origin": _touch_origin, "vec": _touch_vec}
 
-func step(delta: float) -> void:
-	if dead:
-		return
-	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
-	if _touch_id != -1 and _touch_vec.length() > 0.15:
-		dir = _touch_vec.limit_length(1.0)
-	if autopilot:
-		dir = _bot_dir()
-	moving = dir.length() > 0.1
-	if moving:
-		facing = dir.normalized()
-		position += dir * move_speed() * delta
-		distance += dir.length() * move_speed() * delta
-		position = run.obstacles.push_out(position, RADIUS)
+func step(delta: float, simulate := true) -> void:
 	_anim += delta
 	_invuln = maxf(0.0, _invuln - delta)
 	_hurt_flash = maxf(0.0, _hurt_flash - delta)
-	if stats.regen > 0.0 and hp < max_hp():
-		heal(stats.regen * delta)
-	for w in weapons.values():
-		w.step(delta)
+	if mode == "puppet":
+		queue_redraw()
+		return
+	if dead:
+		queue_redraw()
+		return
+	if mode == "remote":
+		# facing and moving come from their packets (see NetSync)
+		var to := net_target - position
+		position = net_target if to.length() > 60.0 else position.lerp(net_target, minf(1.0, delta * 15.0))
+	else:
+		var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+		if _touch_id != -1 and _touch_vec.length() > 0.15:
+			dir = _touch_vec.limit_length(1.0)
+		if autopilot:
+			dir = _bot_dir()
+		moving = dir.length() > 0.1
+		if moving:
+			facing = dir.normalized()
+			position += dir * move_speed() * delta
+			distance += dir.length() * move_speed() * delta
+			position = run.obstacles.push_out(position, RADIUS)
+	if simulate:
+		if stats.regen > 0.0 and hp < max_hp():
+			heal(stats.regen * delta)
+		for w in weapons.values():
+			w.step(delta)
 	queue_redraw()
 
 ## Test bot: keep the nearest enemy at claw range, back off when crowded,
@@ -163,7 +197,7 @@ func take_hit(amount: float) -> void:
 			return
 		hp = 0.0
 		dead = true
-		died.emit()
+		died.emit(self)
 
 func heal(amount: float) -> void:
 	var before := hp
@@ -171,36 +205,37 @@ func heal(amount: float) -> void:
 	healed += hp - before
 	hp_changed.emit()
 
-func add_xp(amount: float) -> void:
-	xp += amount * (1.0 + stats.growth)
-	while xp >= xp_next:
-		xp -= xp_next
-		level += 1
-		# Vampire Survivors-style curve: +10 per level, steeper after 20.
-		xp_next += 10.0 if level < 20 else 13.0
-		leveled_up.emit()
+## Back on its feet (co-op: downed heroes return at the next team level-up).
+func revive(frac := 0.5) -> void:
+	dead = false
+	hp = max_hp() * frac
+	_invuln = 2.5
+	hp_changed.emit()
 
 # ---------------------------------------------------------------- Inventory
 
 func add_weapon(id: String) -> void:
 	var w := Weapon.new(id, self, run)
 	weapons[id] = w
+	inv_rev += 1
 	if weapons.size() >= Db.MAX_WEAPONS:
-		run.weapons_full = 1
+		weapons_full = 1
 
 func upgrade(id: String) -> void:
 	if Db.WEAPONS.has(id):
 		if weapons.has(id):
 			weapons[id].level_up()
+			inv_rev += 1
 		else:
 			add_weapon(id)
 	elif Db.PASSIVES.has(id):
 		passives[id] = passives.get(id, 0) + 1
+		inv_rev += 1
 		recalc_stats()
 	elif Db.ELIXIRS.has(id):
 		var e: Dictionary = Db.ELIXIRS[id]
 		if e.has("heal"): heal(e.heal)
-		if e.has("silver"): run.silver_found += int(e.silver)
+		if e.has("silver"): silver_found += int(e.silver)
 
 ## What a chest can turn into right now: [[weapon, into, "evolve"|"union"], ...].
 ## Evolve: weapon at max + its passive. Union: two weapons, both at max.
@@ -223,6 +258,10 @@ func evolve(e: Array) -> String:
 	weapons.erase(e[0])
 	if e[2] == "union":
 		weapons.erase(Db.WEAPONS[e[0]].union.with)
+		unions += 1
+	else:
+		evolutions += 1
+	made.append(e[1])
 	add_weapon(e[1])
 	return e[1]
 
@@ -233,7 +272,7 @@ func upgrade_options(n := 3) -> Array:
 	var pool := []
 	for id in Db.WEAPONS:
 		var d: Dictionary = Db.WEAPONS[id]
-		if d.get("evolution", false) or not Meta.content_unlocked(id):
+		if d.get("evolution", false) or not allowed.call(id):
 			continue
 		if weapons.has(id):
 			if weapons[id].level < Db.weapon_max_level(id):
@@ -241,7 +280,7 @@ func upgrade_options(n := 3) -> Array:
 		elif _base_weapon_count() < Db.MAX_WEAPONS and not _owns_evolution_of(id):
 			pool.append(id)
 	for id in Db.PASSIVES:
-		if not Meta.content_unlocked(id):
+		if not allowed.call(id):
 			continue
 		var lv: int = passives.get(id, 0)
 		if lv > 0 and lv < Db.PASSIVES[id].max_level:
@@ -270,6 +309,27 @@ func _owns_evolution_of(id: String) -> bool:
 			return true
 	return false
 
+## Inventory as plain data, for co-op sync: {w: {id: level}, p: {id: level}}.
+func inventory() -> Dictionary:
+	var w := {}
+	for id in weapons:
+		w[id] = weapons[id].level
+	return {"w": w, "p": passives.duplicate()}
+
+## Guests mirror the inventory the host sends (weapons never fire here).
+func set_inventory(inv: Dictionary) -> void:
+	weapons.clear()
+	for id in inv.get("w", {}):
+		if Db.WEAPONS.has(id):
+			var w := Weapon.new(id, self, run)
+			w.level = int(inv.w[id])
+			weapons[id] = w
+	passives.clear()
+	for id in inv.get("p", {}):
+		if Db.PASSIVES.has(id):
+			passives[id] = int(inv.p[id])
+	inv_rev += 1
+
 func level_of(id: String) -> int:
 	if weapons.has(id): return weapons[id].level
 	return passives.get(id, 0)
@@ -288,12 +348,21 @@ func _draw() -> void:
 	if facing.x < 0:
 		rect = Rect2(rect.position.x + w, rect.position.y, -w, h)
 	var col := Color.WHITE
-	if _hurt_flash > 0.0:
+	if dead:
+		col = Color(0.6, 0.7, 1.0, 0.35)
+	elif _hurt_flash > 0.0:
 		col = Color(1, 0.3, 0.3)
 	elif _invuln > 0.0 and int(_invuln * 20) % 2 == 0:
 		col = Color(1, 1, 1, 0.5)
 	draw_texture_rect_region(s._tex, rect, src, col)
+	if dead:
+		return
+	if mode != "local" and player_name != "":
+		var f: Font = run.popups.font
+		var tw := f.get_string_size(player_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 8).x
+		draw_string_outline(f, Vector2(-tw * 0.5, -h - 1), player_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, 2, Color.BLACK)
+		draw_string(f, Vector2(-tw * 0.5, -h - 1), player_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(0.8, 0.9, 1.0))
 	# Health bar under the hero, like the original.
-	var frac := hp / max_hp()
+	var frac := clampf(hp / maxf(max_hp(), 1.0), 0.0, 1.0)
 	draw_rect(Rect2(-8, 4, 16, 2), Color(0, 0, 0, 0.7))
 	draw_rect(Rect2(-8, 4, 16 * frac, 2), Color(0.85, 0.1, 0.15))

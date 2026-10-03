@@ -26,7 +26,18 @@ func _ready() -> void:
 	pause.pressed.connect(func(): pause_pressed.emit())
 	add_child(pause)
 
-func _process(_d: float) -> void:
+var _toasts: Array = []  # [text, colour, seconds left]
+
+## A short message under the timer (chest contents in co-op, "you're down"...).
+func toast(text: String, col := UI.PALE) -> void:
+	_toasts.append([text, col, 2.5])
+	if _toasts.size() > 4:
+		_toasts.pop_front()
+
+func _process(d: float) -> void:
+	for t in _toasts:
+		t[2] -= d
+	_toasts = _toasts.filter(func(t): return t[2] > 0.0)
 	queue_redraw()
 
 func _text(pos: Vector2, text: String, size := 8, col := UI.PALE, align := HORIZONTAL_ALIGNMENT_LEFT, f: Font = null) -> void:
@@ -50,19 +61,19 @@ func _draw() -> void:
 	var bw := minf(W - 8, 256.0)
 	var bx := (W - bw) * 0.5
 	var sc := bw / 256.0
-	var frac: float = clampf(p.xp / p.xp_next, 0.0, 1.0)
+	var frac: float = clampf(run.xp / run.xp_next, 0.0, 1.0)
 	draw_rect(Rect2(bx + 22 * sc, 12 * sc, 224 * sc * frac, 8 * sc), Color("5ad1ff"))
 	draw_texture_rect(bar, Rect2(bx, 0, bw, 32 * sc), false)
-	_text(Vector2(W - 6, 38), "LV %d" % p.level, 8, UI.GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
+	_text(Vector2(W - 6, 38), "LV %d" % run.level, 8, UI.GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
 	# Timer, the score.
 	_text(Vector2(W * 0.5, 44), UI.time_text(run.time), 12, UI.PALE, HORIZONTAL_ALIGNMENT_CENTER)
 	# Kills and silver.
 	var sy := 28.0 + ceilf(ceili(p.max_hp() / HEART_HP) / 7.0) * 11.0 + 2.0
 	draw_texture_rect(Db.tex("skull"), Rect2(6, sy, 10, 10), false)
-	_text(Vector2(19, sy + 9), str(run.kills), 8)
+	_text(Vector2(19, sy + 9), str(p.kills), 8)
 	var coin := Db.sheet("silver")
 	draw_texture_rect_region(coin._tex, Rect2(6, sy + 12, 10, 10), Rect2(0, 0, coin._w, coin._h))
-	_text(Vector2(19, sy + 21), str(run.silver_found), 8)
+	_text(Vector2(19, sy + 21), str(p.silver_found), 8)
 	# Hearts.
 	var hearts := ceili(p.max_hp() / HEART_HP)
 	var hp: float = p.hp
@@ -74,6 +85,12 @@ func _draw() -> void:
 		if fill > 0.0:
 			var t := Db.tex("heart")
 			draw_texture_rect_region(t, Rect2(r.position, Vector2(10 * fill, 10)), Rect2(0, 0, 16 * fill, 16))
+	var ty := 64.0
+	for t in _toasts:
+		_text(Vector2(W * 0.5, ty), t[0], 8, Color(t[1], clampf(t[2], 0.0, 1.0)), HORIZONTAL_ALIGNMENT_CENTER, body_font)
+		ty += 11.0
+	if run.mode != "solo" and Net.code != "":
+		_text(Vector2(W - 6, 82), "ROOM " + Net.code, 6, UI.DIM, HORIZONTAL_ALIGNMENT_RIGHT)
 	# Owned weapons and passives along the bottom.
 	var x := 4.0
 	var y := view.y - 18.0

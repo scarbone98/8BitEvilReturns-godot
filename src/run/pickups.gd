@@ -36,18 +36,29 @@ func pull_all_candy() -> void:
 		if p.type == "candy":
 			p.pull = true
 
+## Pickups fly to the nearest living hero within their magnet range.
 func step(delta: float) -> void:
-	var player = run.player
-	var ppos: Vector2 = player.position
-	var mag: float = player.magnet_radius()
+	var heroes: Array = run.living_heroes()
+	if heroes.is_empty():
+		return
 	var i := list.size() - 1
 	while i >= 0:
 		var p: Dictionary = list[i]
 		p.t += delta
-		var to: Vector2 = ppos - p.pos
+		var hero = p.get("hero")
+		if hero == null or not is_instance_valid(hero) or hero.dead:
+			hero = heroes[0]
+			var best := INF
+			for h in heroes:
+				var dd: float = h.position.distance_squared_to(p.pos)
+				if dd < best:
+					best = dd
+					hero = h
+		var to: Vector2 = hero.position - p.pos
 		var d := to.length()
-		if p.type != "chest" and d < mag:
+		if p.type != "chest" and d < hero.magnet_radius():
 			p.pull = true
+			p.hero = hero
 		if p.pull or (p.type == "chest" and d < 14.0):
 			var spd: float = 60.0 + p.t * 40.0 if p.type != "chest" else 0.0
 			p.pos += to.normalized() * minf(d, maxf(spd, 180.0) * delta)
@@ -55,8 +66,25 @@ func step(delta: float) -> void:
 			if p.type == "candy":
 				_candy_count -= 1
 			list.remove_at(i)
-			run.collect(p)
+			run.collect(p, hero)
 		i -= 1
+	queue_redraw()
+
+# Guests draw whatever the host's snapshot says is on the ground.
+const MIRROR_TYPES := ["candy0", "candy1", "candy2", "silver", "heart", "clock", "skull", "basket", "chest"]
+
+func mirror_code(p: Dictionary) -> int:
+	return int(p.tier) if p.type == "candy" else MIRROR_TYPES.find(p.type)
+
+func mirror_apply(entries: Array) -> void:
+	var t := Time.get_ticks_msec() / 1000.0
+	list.clear()
+	for e in entries:
+		var code: int = e[0]
+		if code < 3:
+			list.append({"type": "candy", "tier": code, "pos": e[1], "t": t})
+		elif code < MIRROR_TYPES.size():
+			list.append({"type": MIRROR_TYPES[code], "pos": e[1], "t": t})
 	queue_redraw()
 
 func _draw() -> void:

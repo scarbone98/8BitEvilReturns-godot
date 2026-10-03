@@ -12,6 +12,7 @@ config/icon="res://icon.svg"
 Db="*res://src/autoload/db.gd"
 Meta="*res://src/autoload/meta.gd"
 Bridge="*res://src/autoload/bridge.gd"
+Net="*res://src/autoload/net.gd"
 
 [display]
 window/size/viewport_width=240

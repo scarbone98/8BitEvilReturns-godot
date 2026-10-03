@@ -104,9 +104,9 @@ func try_unlock(char_id: String) -> bool:
 ## healed, evolutions, unions, weapons_full, silver, distance, char, kinds,
 ## evolved, seen). Returns what changed, for the results screen.
 func finish_run(r: Dictionary) -> Dictionary:
-	var is_best: bool = r.seconds > best_seconds
-	best_seconds = maxi(best_seconds, r.seconds)
-	silver += r.silver
+	var is_best: bool = int(r.seconds) > best_seconds
+	best_seconds = maxi(best_seconds, int(r.seconds))
+	silver += int(r.silver)
 	totals.runs += 1
 	for k in ["kills", "candy", "chests", "bosses", "silver", "distance"]:
 		totals[k] = int(totals.get(k, 0)) + int(r.get(k, 0))

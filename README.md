@@ -83,6 +83,25 @@ src/ui/                 HUD, theme (original GUI_border art), SheetView
 - **A hero.** Add an entry to `Db.CHARACTERS` with a run sheet, an idle sheet,
   a starting weapon, stat bonuses and a silver cost.
 
+## Co-op
+
+Up to 4 players, each on their own device, join a room by code (CO-OP on
+the title screen). The host's game runs the whole fight and streams each
+guest a snapshot of what they can see, ~15 times a second; guests move
+their own hero locally and send its position back. Team XP and level are
+shared, everyone picks their own level-up card, and downed heroes come
+back at the next team level-up. The Scareathon server only keeps the lobby
+and relays packets (`/8bitevilreturns/v2/ws`, see
+`server/eightBitEvilV2/rooms.js` in the site repo).
+
+- `src/autoload/net.gd`: the socket, lobby, and packet relay
+- `src/run/netsync.gd`: snapshot encoding/decoding, level-up and results messages
+- Dev flags: `coop=host&players=N` makes a room and starts when N are in;
+  `coop=join&room=CODE` joins; `server=http://127.0.0.1:8792` picks the server.
+- `tools/coop_test.sh [server] [seconds] [players]` plays bots against each
+  other headless. For a local relay, run the site's
+  `routes/8bitevilreturnsV2.js` alone in Fastify on port 8792.
+
 ## Arcade integration
 
 This is the same `postMessage` protocol the Unity build used, so the site
@@ -92,7 +111,8 @@ needs no changes. Point `EIGHT_BIT_EVIL_RETURNS_URL` at the new build.
 - page → game `SCARATHON_USER {userId, accessToken, apiBaseUrl}`
 - on death: `POST /8bitevilreturns/runs {runTimeSeconds, kills, candyCollected}`,
   then game → page `PLAYER_DIED {score: seconds}`
-- silver and unlocks: `getUserData`, `setUserData`, `unlockCharacter`
+- V2 keeps its own account save: `GET/PUT /8bitevilreturns/v2/save`
+  (unlocks, feats, power-ups, totals), separate from the Unity game's data
 
 ## Known gaps / to cross-check with the Unity source
 

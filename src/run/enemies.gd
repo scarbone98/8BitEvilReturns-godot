@@ -3,7 +3,7 @@ extends Node2D
 ## hold hundreds of them. Weapons find enemies through query_circle(), which
 ## uses a spatial grid rebuilt every frame.
 
-signal died(pos: Vector2, kind: String, is_boss: bool)
+signal died(pos: Vector2, kind: String, is_boss: bool, attacker: int)
 
 const CELL := 32.0
 const GRID := 128  # cells per side of the grid window (4096px), centred on the players
@@ -88,7 +88,7 @@ func _remove(i: int) -> void:
 	anim.remove_at(last); flash.remove_at(last); uid.remove_at(last); boss.remove_at(last)
 
 ## Returns true if the hit killed it.
-func hurt(i: int, amount: float, from: Vector2, knockback := 0.0) -> bool:
+func hurt(i: int, amount: float, from: Vector2, knockback := 0.0, attacker := -1) -> bool:
 	if i < 0 or i >= hp.size() or hp[i] <= 0.0:
 		return false
 	hp[i] -= amount
@@ -98,7 +98,7 @@ func hurt(i: int, amount: float, from: Vector2, knockback := 0.0) -> bool:
 		knock[i] += (pos[i] - from).normalized() * knockback * 6.0
 	if hp[i] <= 0.0:
 		# Removed in the next step() so indices stay valid while weapons loop.
-		died.emit(pos[i], kind[i], boss[i] == 1)
+		died.emit(pos[i], kind[i], boss[i] == 1, attacker)
 		return true
 	return false
 
@@ -264,6 +264,58 @@ func step(delta: float, targets: PackedVector2Array, view: Rect2) -> void:
 		if i % 3 == stagger and _kind_fly[kidx[i]] == 0:
 			p = obstacles.push_out(p, radius[i] * 0.6)
 		pos[i] = p
+	queue_redraw()
+
+# ---------------------------------------------------------------- Guests
+# On a guest nothing is simulated: each snapshot replaces the enemy list and
+# positions glide from where they were drawn to where the host says they are.
+
+var _from := PackedVector2Array()
+var _to := PackedVector2Array()
+var _mirror_t := 0.0
+const MIRROR_STEP := 1.0 / 15.0
+
+## entries: [uid, kind index, flags (1 boss, 2 hurt, 4 frozen), position, hp fraction]
+func mirror_apply(entries: Array) -> void:
+	var old := {}
+	for i in uid.size():
+		old[uid[i]] = i
+	var n := entries.size()
+	var npos := PackedVector2Array(); npos.resize(n)
+	var nfrom := PackedVector2Array(); nfrom.resize(n)
+	var nanim := PackedFloat32Array(); nanim.resize(n)
+	kind.clear()
+	uid.resize(n); kidx.resize(n); scale_.resize(n); flash.resize(n); boss.resize(n)
+	hp.resize(n); max_hp.resize(n); radius.resize(n); knock.resize(n)
+	for e_i in n:
+		var e: Array = entries[e_i]
+		var u: int = e[0]
+		var k: int = e[1]
+		var was = old.get(u)
+		nfrom[e_i] = pos[was] if was != null else e[3]
+		npos[e_i] = e[3]
+		nanim[e_i] = anim[was] if was != null else randf()
+		uid[e_i] = u
+		kidx[e_i] = k
+		kind.append(_kinds[k])
+		boss[e_i] = 1 if e[2] & 1 else 0
+		scale_[e_i] = 2.0 if e[2] & 1 else 1.0
+		flash[e_i] = 0.1 if e[2] & 2 else 0.0
+		radius[e_i] = Db.ENEMIES[_kinds[k]].radius * scale_[e_i]
+		hp[e_i] = e[4]
+		max_hp[e_i] = 1.0
+	_from = nfrom
+	_to = npos
+	pos = nfrom.duplicate()
+	anim = nanim
+	_mirror_t = 0.0
+
+func mirror_step(delta: float) -> void:
+	_mirror_t += delta
+	var k := clampf(_mirror_t / MIRROR_STEP, 0.0, 1.0)
+	for i in pos.size():
+		pos[i] = _from[i].lerp(_to[i], k)
+		anim[i] += delta
 	queue_redraw()
 
 func _draw() -> void:

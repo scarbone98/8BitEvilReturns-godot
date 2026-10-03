@@ -9,9 +9,11 @@ func _ready() -> void:
 	var f := Bridge.flags()
 	if f.has("speed"):
 		Engine.time_scale = float(f.speed)
-	if f.has("autoplay") or f.has("dev"):
-		if f.has("char") and Db.CHARACTERS.has(f.char):
-			Meta.selected = f.char
+	if f.has("char") and Db.CHARACTERS.has(f.char):
+		Meta.selected = f.char
+	if f.has("coop"):
+		_dev_coop(f)
+	elif f.has("autoplay") or f.has("dev"):
 		_start_run(true)
 	else:
 		show_title()
@@ -80,6 +82,7 @@ func show_title() -> void:
 	box.add_child(SheetView.new(Db.CHARACTERS[Meta.selected].run, Vector2(0, 40)))
 	var play := UI.button("PLAY", show_select, 28)
 	box.add_child(play)
+	box.add_child(UI.button("CO-OP", show_coop, 22))
 	box.add_child(UI.button("POWER UPS", show_powerups, 22))
 	box.add_child(UI.button("COLLECTION", show_collection, 22))
 	var stats := UI.label("", 8, UI.DIM)
@@ -337,6 +340,155 @@ func _content_name(id: String) -> String:
 func _unlock_hint(id: String) -> String:
 	var f := Db.feat_for(id)
 	return Db.FEATS[f].desc if f != "" else "?"
+
+# ---------------------------------------------------------------- Co-op
+
+const CODE_KEYS := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+func _my_name() -> String:
+	return Db.CHARACTERS[Meta.selected].name
+
+func show_coop(error := "") -> void:
+	var box := _page("CO-OP")
+	box.add_child(UI.body("Up to 4 players, each on their own phone or computer. Everyone plays the hero they've picked.", 11, UI.DIM))
+	var hero := HBoxContainer.new()
+	hero.alignment = BoxContainer.ALIGNMENT_CENTER
+	hero.add_child(SheetView.new(Db.CHARACTERS[Meta.selected].idle, Vector2(28, 28)))
+	hero.add_child(UI.label("You: " + _my_name(), 8, UI.PALE))
+	box.add_child(hero)
+	if error != "":
+		box.add_child(UI.body(error, 11, UI.RED))
+	box.add_child(UI.button("HOST A ROOM", func():
+		_watch_net()
+		Net.create(_my_name(), Meta.selected)
+		show_lobby(), 26))
+	box.add_child(UI.label("JOIN WITH A CODE", 8, UI.GOLD))
+	var code_l := UI.label("_ _ _ _", 16, UI.PALE)
+	box.add_child(code_l)
+	var typed := [""]
+	var refresh := func():
+		var t: String = typed[0]
+		var shown := []
+		for i in 4:
+			shown.append(t[i] if i < t.length() else "_")
+		code_l.text = " ".join(shown)
+	var keys := GridContainer.new()
+	keys.columns = 8
+	keys.add_theme_constant_override("h_separation", 2)
+	keys.add_theme_constant_override("v_separation", 2)
+	for ch in CODE_KEYS:
+		var k := UI.button(ch, func():
+			if typed[0].length() < 4:
+				typed[0] += ch
+				refresh.call(), 22)
+		k.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		keys.add_child(k)
+	box.add_child(keys)
+	var row := HBoxContainer.new()
+	var del := UI.button("DEL", func():
+		typed[0] = typed[0].substr(0, maxi(0, typed[0].length() - 1))
+		refresh.call(), 22)
+	del.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(del)
+	var join := UI.button("JOIN", func():
+		if typed[0].length() == 4:
+			_watch_net()
+			Net.join(typed[0], _my_name(), Meta.selected)
+			show_lobby(), 22)
+	join.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(join)
+	box.add_child(row)
+	box.add_child(UI.button("BACK", show_title, 20))
+
+var _net_watched := false
+
+## Lobby and run hooks, connected once.
+func _watch_net() -> void:
+	if _net_watched:
+		return
+	_net_watched = true
+	Net.failed.connect(func(msg):
+		if not Net.in_game:
+			Net.leave()
+			show_coop(msg))
+	Net.closed.connect(func(reason):
+		if not Net.in_game and _screen is CanvasLayer:
+			show_coop("The host closed the room." if reason == "host" else "Lost the connection."))
+	Net.started.connect(func(stage, players):
+		_start_coop(stage, players))
+
+func show_lobby() -> void:
+	var box := _page("CO-OP ROOM")
+	var code_l := UI.label("CONNECTING...", 24, UI.GOLD)
+	box.add_child(code_l)
+	box.add_child(UI.body("Friends tap CO-OP, then type this code.", 11, UI.DIM))
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 3)
+	list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(list)
+	var stage_l := UI.label("", 8, UI.PALE)
+	box.add_child(stage_l)
+	var stage_btn := UI.button("CHANGE STAGE", func():
+		var ids: Array = Db.STAGES.keys().filter(func(sid): return Meta.content_unlocked(sid))
+		Net.pick({"stage": ids[(ids.find(Net.stage) + 1) % ids.size()]}), 20)
+	box.add_child(stage_btn)
+	var start := UI.button("START", func(): Net.start_game(), 28)
+	box.add_child(start)
+	var wait := UI.label("Waiting for the host to start...", 8, UI.DIM)
+	box.add_child(wait)
+	box.add_child(UI.button("LEAVE", func():
+		Net.leave()
+		show_coop(), 20))
+	var refresh := func():
+		if not is_instance_valid(code_l):
+			return
+		code_l.text = Net.code if Net.code != "" else "CONNECTING..."
+		for n in list.get_children():
+			n.queue_free()
+		for p in Net.players:
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 6)
+			var hid := str(p.hero) if Db.CHARACTERS.has(str(p.hero)) else "joe"
+			row.add_child(SheetView.new(Db.CHARACTERS[hid].idle, Vector2(28, 28)))
+			row.add_child(UI.label("%s%s" % [p.name, "  (host)" if int(p.slot) == 0 else ""], 8, UI.PALE, HORIZONTAL_ALIGNMENT_LEFT))
+			list.add_child(row)
+		stage_l.text = "STAGE: " + Db.STAGES.get(Net.stage, Db.STAGES.graveyard).name
+		stage_btn.visible = Net.is_host
+		start.visible = Net.is_host
+		wait.visible = not Net.is_host and Net.code != ""
+	refresh.call()
+	Net.room_changed.connect(refresh)
+	code_l.tree_exiting.connect(func(): Net.room_changed.disconnect(refresh))
+
+func _start_coop(stage_id: String, players: Array) -> void:
+	var run := RunScript.new()
+	run.process_mode = Node.PROCESS_MODE_PAUSABLE
+	_swap(run)
+	if not Db.STAGES.has(stage_id):
+		stage_id = "graveyard"
+	run.start(Meta.selected, stage_id, {"mode": "host" if Net.is_host else "guest", "players": players})
+	var f := Bridge.flags()
+	if f.has("autoplay"):
+		run.apply_dev_flags(f)
+	run.quit_to_menu.connect(func():
+		Net.leave()
+		show_title())
+
+## Dev: `coop=host` makes a room and starts once `players=N` have joined;
+## `coop=join&room=CODE` joins one. Add `autoplay` for bots.
+func _dev_coop(f: Dictionary) -> void:
+	_watch_net()
+	if f.coop == "host":
+		Net.create(_my_name(), Meta.selected)
+		var want := int(f.get("players", "2"))
+		Net.room_changed.connect(func():
+			if Net.code != "":
+				print("[room] ", Net.code, " players ", Net.players.size())
+			if Net.players.size() >= want and not Net.in_game:
+				Net.start_game())
+	else:
+		Net.join(str(f.get("room", "")), _my_name(), Meta.selected)
+	show_lobby()
 
 # ---------------------------------------------------------------- Run
 
