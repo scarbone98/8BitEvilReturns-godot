@@ -26,7 +26,7 @@ const DELAY_MAX := 0.15
 const CHUNK_BYTES := 7000  # the server refuses packets over 8 KB
 # Bump when the snapshot format or messages change, so a player on an old page
 # (or an old server copy) is told to reload instead of seeing garbage.
-const PROTOCOL := 6
+const PROTOCOL := 7
 
 var run
 var _clock := 0.0
@@ -146,6 +146,11 @@ func _send_snapshot_to(seat: int, h) -> void:
 	b.put_u16(mini(h.kills, 65535))
 	b.put_u16(mini(h.silver_found, 65535))
 	b.put_u8(1 if h.dead else 0)
+	# Their weapons' cooldown timers (in inventory order), so the copies their
+	# own screen fires stay in step with ours.
+	b.put_u8(h.weapons.size())
+	for w in h.weapons.values():
+		b.put_u16(clampi(roundi(w._timer * 1000.0), 0, 65535))
 	b.put_float(origin.x)
 	b.put_float(origin.y)
 	b.put_u8(run.heroes.size())
@@ -371,6 +376,26 @@ func _send_input() -> void:
 	b.put_u8(1 if h.moving else 0)
 	Net.send(0, K_INPUT, b.data_array)
 
+## Keeps our predicted weapons firing when the host's do. The host's timer
+## was read about a one-way trip ago, so ours should be that much further
+## along; small differences are left alone so firing doesn't stutter.
+const ONE_WAY_GUESS := 0.03
+
+func _sync_timers(timers: Array) -> void:
+	var ws: Array = run.player.weapons.values()
+	if ws.size() != timers.size():
+		return  # our inventory is a moment behind; next time
+	for i in ws.size():
+		var w: Weapon = ws[i]
+		if not Db.is_predicted(w.def):
+			continue
+		var target: float = timers[i] - ONE_WAY_GUESS
+		var cd := w.cooldown()
+		# Compare around the cycle (0.95s left and 0.0s left are 0.05s apart).
+		var diff := fposmod(w._timer - target + cd * 0.5, cd) - cd * 0.5
+		if absf(diff) > 0.04:
+			w._timer = target
+
 func _off(b: StreamPeerBuffer, origin: Vector2) -> Vector2:
 	return origin + Vector2(b.get_16(), b.get_16())
 
@@ -391,6 +416,11 @@ func _read_snapshot(data: PackedByteArray) -> void:
 	me.kills = b.get_u16()
 	me.silver_found = b.get_u16()
 	me.dead = b.get_u8() == 1
+	var nt := b.get_u8()
+	var timers := []
+	for k in nt:
+		timers.append(b.get_u16() / 1000.0)
+	_sync_timers(timers)
 	_origin = Vector2(b.get_float(), b.get_float())
 	var heroes := {}
 	var n := b.get_u8()
@@ -518,6 +548,7 @@ func _interpolate(delta: float) -> void:
 	run.enemies.mirror_set(list, delta)
 	if run.autoplay:
 		_measure(list)
+		_match_hits(list)
 	# Other heroes
 	for seat in bf.heroes:
 		var h = run.heroes.get(seat)
@@ -579,6 +610,60 @@ func _interpolate(delta: float) -> void:
 				_ring_seen += 1
 				_ring_off = maxf(_ring_off, (op[1] - run.player.position).length())
 
+# Test bots: how long after one of our own (predicted) shots touches a monster
+# the host's hit on it shows up here, and how many never do.
+var _local_hits := {}   # uid -> msec our shot touched it
+var _server_hurt := {}   # uid -> msec the host's hit last showed up here
+var _was_hurt := {}
+var _hit_gaps: Array = []
+var _hit_missed := 0
+
+func note_local_hit(uid: int) -> void:
+	if _local_hits.has(uid):
+		return
+	var now := Time.get_ticks_msec()
+	# The host may have hit it a little before our copy did.
+	if _server_hurt.has(uid) and now - _server_hurt[uid] < 300:
+		_hit_gaps.append(_server_hurt[uid] - now)
+		return
+	_local_hits[uid] = now
+
+func _match_hits(list: Array) -> void:
+	var now := Time.get_ticks_msec()
+	var hurt := {}
+	for e in list:
+		if e[2] & 2:
+			hurt[e[0]] = true
+			if not _was_hurt.has(e[0]):  # a new host hit shows up here
+				_server_hurt[e[0]] = now
+				if _local_hits.has(e[0]):
+					_hit_gaps.append(now - _local_hits[e[0]])
+					_local_hits.erase(e[0])
+	_was_hurt = hurt
+	# A one-hit kill never shows as hurt: it just disappears. That counts too.
+	var present := {}
+	for e in list:
+		present[e[0]] = true
+	for u in _local_hits.keys():
+		if not present.has(u):
+			_hit_gaps.append(now - _local_hits[u])
+			_local_hits.erase(u)
+		elif now - _local_hits[u] > 700:
+			_hit_missed += 1
+			_local_hits.erase(u)
+
+func _hit_report() -> String:
+	if _hit_gaps.is_empty():
+		return "no hits matched; never confirmed %d" % _hit_missed
+	_hit_gaps.sort()
+	var med: int = _hit_gaps[_hit_gaps.size() / 2]
+	var lo: int = _hit_gaps[int(_hit_gaps.size() * 0.1)]
+	var hi: int = _hit_gaps[int(_hit_gaps.size() * 0.9)]
+	var out := "hits %d: host's hit landed %+dms after ours (median), 80%% between %+d and %+dms; never confirmed %d" % [_hit_gaps.size(), med, lo, hi, _hit_missed]
+	_hit_gaps.clear()
+	_hit_missed = 0
+	return out
+
 # Test bots: the biggest frame-to-frame jump of any enemy, reported every 10s.
 var _nums_seen := 0
 var _skipped := 0
@@ -600,6 +685,7 @@ func _measure(list: Array) -> void:
 		print("[smooth] biggest enemy jump between frames: %.1f px, buffer %d ms; pulse rings drawn %d, furthest from our hero %.1f px; damage numbers received %d; own shots drawn here now %d (host copies skipped %d)" % [_max_jump, roundi(render_delay * 1000.0), _ring_seen, _ring_off, _nums_seen, run.shots.list.size(), _skipped])
 		_nums_seen = 0
 		_skipped = 0
+		print("[hits] ", _hit_report())
 		_ring_seen = 0
 		_ring_off = 0.0
 		_jump_clock = 0.0

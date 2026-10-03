@@ -302,6 +302,8 @@ func mirror_set(entries: Array, delta: float) -> void:
 		hp[i] = e[4]
 		max_hp[i] = 1.0
 	frozen = 1.0 if n > 0 and entries[0][2] & 4 else 0.0
+	# Our own predicted shots look monsters up through the grid.
+	_rebuild_grid(Vector2.ZERO)
 	queue_redraw()
 
 func _draw() -> void:

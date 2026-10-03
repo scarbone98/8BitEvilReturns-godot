@@ -118,6 +118,8 @@ func hit(w: Weapon, i: int, dmg: float, from: Vector2, kb: float) -> void:
 		# Our own predicted shots only look the part; the host does the damage.
 		if i >= 0 and i < run.enemies.flash.size():
 			run.enemies.flash[i] = 0.12
+			if run.autoplay and run.netsync:
+				run.netsync.note_local_hit(run.enemies.uid[i])
 		return
 	var killed: bool = run.enemies.hurt(i, dmg, from, kb, w.player.slot)
 	var ls: float = w.def.get("lifesteal", 0.0)
