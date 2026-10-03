@@ -493,10 +493,11 @@ func add_xp(amount: float) -> void:
 		xp_next += 10.0 if level < 20 else (13.0 if level < 40 else 16.0)
 		_on_level_up()
 
-## Co-op shares one XP bar between more players fighting more monsters, so
-## each level needs more.
+## Co-op shares one XP bar between more players fighting more monsters
+## (60% more per extra player), so each level needs a little more: 25% per
+## extra player keeps everyone's builds growing about as fast as solo.
 func _xp_scale() -> float:
-	return 1.0 + 0.5 * (heroes.size() - 1)
+	return 1.0 + 0.25 * (heroes.size() - 1)
 
 # ---------------------------------------------------------------- Screens
 
