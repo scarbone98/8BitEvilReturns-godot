@@ -14,12 +14,13 @@ Meta="*res://src/autoload/meta.gd"
 Bridge="*res://src/autoload/bridge.gd"
 
 [display]
-window/size/viewport_width=288
-window/size/viewport_height=512
-window/size/window_width_override=432
-window/size/window_height_override=768
+window/size/viewport_width=240
+window/size/viewport_height=400
+window/size/window_width_override=480
+window/size/window_height_override=852
 window/stretch/mode="viewport"
 window/stretch/aspect="expand"
+window/stretch/scale_mode="integer"
 window/handheld/orientation=1
 
 [gui]

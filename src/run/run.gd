@@ -286,7 +286,7 @@ func _upgrade_card(id: String, on_pick: Callable) -> Button:
 		desc = d.desc
 	else:
 		desc = d.desc
-	var b := UI.button("", on_pick, 58)
+	var b := UI.button("", on_pick, 66)
 	var row := HBoxContainer.new()
 	row.set_anchors_preset(Control.PRESET_FULL_RECT)
 	row.offset_left = 8; row.offset_right = -8
