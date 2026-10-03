@@ -63,12 +63,21 @@ func _ready() -> void:
 			if seat == 0:
 				run.hud.banner(""))
 	if run.is_guest():
-		var unlocked := []
-		for id in Db.WEAPONS.keys() + Db.PASSIVES.keys():
-			if Meta.content_unlocked(id):
-				unlocked.append(id)
-		Net.send_json(0, {"t": "hello", "proto": PROTOCOL, "powerups": {} if run.dev else Meta.powerup_stats(),
-			"unlocked": unlocked, "view": [run.player.view_size.x, run.player.view_size.y]})
+		_send_hello()
+
+## Our power-ups and unlocks, for the host to apply to our hero. Resent every
+## second until the host confirms: if its game wasn't up yet, the first one
+## was lost and we'd play with none of ours.
+var _hello_ok := false
+var _hello_clock := 0.0
+
+func _send_hello() -> void:
+	var unlocked := []
+	for id in Db.WEAPONS.keys() + Db.PASSIVES.keys():
+		if Meta.content_unlocked(id):
+			unlocked.append(id)
+	Net.send_json(0, {"t": "hello", "proto": PROTOCOL, "powerups": {} if run.dev else Meta.powerup_stats(),
+		"unlocked": unlocked, "view": [run.player.view_size.x, run.player.view_size.y]})
 
 func _process(delta: float) -> void:
 	_clock += delta
@@ -80,6 +89,11 @@ func _process(delta: float) -> void:
 	if _clock >= INPUT_EVERY:
 		_clock = 0.0
 		_send_input()
+	if not _hello_ok:
+		_hello_clock += delta
+		if _hello_clock >= 1.0:
+			_hello_clock = 0.0
+			_send_hello()
 	_interpolate(delta)
 
 # ---------------------------------------------------------------- Host
@@ -279,6 +293,11 @@ func _host_json(from: int, m: Dictionary) -> void:
 		"hello":
 			if int(m.get("proto", 0)) != PROTOCOL:
 				Net.send_json(from, {"t": "outdated"})
+			Net.send_json(from, {"t": "hello_ok"})
+			if h.get_meta("hello", false):
+				return  # already applied (it's resent until confirmed)
+			h.set_meta("hello", true)
+			print("[net] seat %d's power-ups: %s" % [from, m.get("powerups", {})])
 			# Their own power-ups and unlocks apply to their hero.
 			var bonus := {}
 			var p = m.get("powerups", {})
@@ -508,6 +527,8 @@ func _guest_json(m: Dictionary) -> void:
 			run.hud.toast(str(m.get("text", "")), UI.RED)
 		"outdated":
 			run.hud.banner("A new version is out: reload the page")
+		"hello_ok":
+			_hello_ok = true
 		"over":
 			var r: Dictionary = m.get("summary", {})
 			run.show_results(r)

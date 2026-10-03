@@ -75,7 +75,10 @@ func setup(id: String, powerup_stats := {}) -> void:
 	hp = max_hp()
 	revivals = int(stats.revival)
 	if not allowed.is_valid():
-		allowed = Meta.content_unlocked
+		# This device's hero uses this device's unlocks. Another player's hero
+		# gets only what everyone has until their own unlocks arrive (never the
+		# host's).
+		allowed = Meta.content_unlocked if mode == "local" else func(item): return not Db.is_locked_content(item)
 
 func recalc_stats() -> void:
 	var old_max := max_hp() if not stats.is_empty() else 0.0
