@@ -34,7 +34,8 @@ var popups
 var netsync
 var camera: Camera2D
 var ground: Sprite2D
-var front: Node2D
+var world: Node2D  # y-sorted: heroes and props, so each sorts by where its feet are
+var front: Node2D  # redraws enemies standing in front of a prop
 var hud
 var ui: CanvasLayer
 
@@ -85,6 +86,10 @@ func start(char_id: String, p_stage := "graveyard", coop := {}) -> void:
 	pickups = _make(PickupsScript)
 	enemies = _make(EnemiesScript)
 	enemies.died.connect(_on_enemy_died)
+	world = Node2D.new()
+	world.y_sort_enabled = true
+	add_child(world)
+	obstacles.layer = world
 	popups = PopupsScript.new()  # created early: heroes use its font for name tags
 
 	if mode == "solo":
@@ -99,7 +104,7 @@ func start(char_id: String, p_stage := "graveyard", coop := {}) -> void:
 			if me:
 				player = hero
 	front = Node2D.new()
-	front.draw.connect(func(): obstacles.draw_props(front, true, player.position.y))
+	front.draw.connect(func(): enemies.draw_in_front_of_props(front))
 	add_child(front)
 	shots = _make(ShotsScript)
 	popups.set("run", self)
@@ -136,7 +141,7 @@ func _add_hero(seat: int, char_id: String, hero_mode: String, name: String):
 	h.slot = seat
 	h.mode = hero_mode
 	h.player_name = name
-	add_child(h)
+	world.add_child(h)
 	var mine := hero_mode == "local"
 	h.setup(char_id, Meta.powerup_stats() if mine and not dev else {})
 	if mine:
@@ -213,6 +218,8 @@ func apply_dev_flags(f: Dictionary) -> void:
 		# Stress test: fill the field with this many enemies right away.
 		for k in int(f.horde):
 			enemies.spawn(Db.ENEMIES.keys().pick_random(), obstacles.free_spot(player.position + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(60, 300), 8.0))
+	if f.has("propdemo"):
+		_prop_demo.call_deferred()
 	if f.has("die"):
 		_game_over.call_deferred()
 	if f.has("levelup"):
@@ -226,6 +233,21 @@ func apply_dev_flags(f: Dictionary) -> void:
 		for i in stage.events.size():
 			if stage.events[i].at < float(f.minute):
 				_events_done[i] = true
+
+## Dev: frozen monsters behind, in front of and beside the nearest prop, to
+## check they sort against it correctly. Prints where to look.
+func _prop_demo() -> void:
+	var best = null
+	for o in obstacles.props_in(view_rect().grow(200)):
+		if best == null or o.pos.distance_to(player.position) < best.pos.distance_to(player.position):
+			best = o
+	if best == null:
+		return
+	var base: Vector2 = best.pos
+	for spot in [[Vector2(0, -16), "zombie"], [Vector2(2, 14), "ghost"], [Vector2(-20, 2), "zombie"], [Vector2(22, -4), "scarecrow"]]:
+		enemies.spawn(spot[1], base + spot[0])
+	enemies.frozen = 1.0e9
+	print("[propdemo] %s at %s, offset from hero %s" % [best.kind, base, base - player.position])
 
 func _make(script: Script) -> Node:
 	var n: Node = script.new()

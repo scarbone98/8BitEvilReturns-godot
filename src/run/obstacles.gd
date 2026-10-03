@@ -13,8 +13,8 @@ const START_CLEAR := 64.0  # no props this close to where heroes start
 # Collision circle per prop: radius, and how far above the sprite's feet its
 # centre sits (big buildings block their whole base, not just the doorstep).
 const PROPS := {
-	"grave_1_small": {"r": 7.0},
-	"grave_2": {"r": 7.0},
+	"grave_1_small": {"r": 11.0},  # about the stone's half-width
+	"grave_2": {"r": 10.0},
 	"tree": {"r": 7.0, "rare": true},
 	"tree_2": {"r": 7.0, "rare": true},
 	"tree_3": {"r": 7.0, "rare": true},
@@ -27,8 +27,10 @@ const PROPS := {
 
 var run
 var kinds: Array = []
-var _chunks := {}  # Vector2i -> Array of {kind, pos (feet), c (collision centre), r}
+var layer: Node2D  # the run's y-sorted layer: props are sprites in it, next to the heroes
+var _chunks := {}  # Vector2i -> Array of {kind, pos (feet), c (collision centre), r, rect, sprite}
 var _anim := 0.0
+var _animated: Array = []  # sprites with frames (street lamps)
 
 func setup(stage: Dictionary) -> void:
 	kinds = stage.obstacles
@@ -62,8 +64,58 @@ func _chunk(c: Vector2i) -> Array:
 	var props = _chunks.get(c)
 	if props == null:
 		props = _chunk_props(c)
+		for o in props:
+			_make_sprite(o)
 		_chunks[c] = props
 	return props
+
+## Each prop is a Sprite2D in the y-sorted layer, its origin at its feet, so
+## heroes walk in front of or behind it by where they stand.
+func _make_sprite(o: Dictionary) -> void:
+	var def: Dictionary = PROPS[o.kind]
+	var sp := Sprite2D.new()
+	sp.centered = false
+	sp.position = o.pos
+	var w: float
+	var h: float
+	var lift := 4.0
+	if def.has("sheet"):
+		var sh := Db.sheet(def.sheet)
+		sp.texture = sh._tex
+		sp.hframes = int(sh.frames)
+		w = sh._w
+		h = sh._h
+		lift = 2.0
+		_animated.append(sp)
+	else:
+		sp.texture = Db.tex(o.kind)
+		w = sp.texture.get_width()
+		h = sp.texture.get_height()
+	var k := 0.5 if o.kind.begins_with("tree") else 1.0
+	sp.scale = Vector2(k, k)
+	sp.offset = Vector2(-w * 0.5, -h + lift / k)
+	# Where it's drawn, for sorting enemies against it.
+	o["rect"] = Rect2(o.pos + Vector2(-w * 0.5 * k, -h * k + lift), Vector2(w * k, h * k))
+	o["sprite"] = sp
+	if layer:
+		layer.add_child(sp)
+
+func _free_chunk(c: Vector2i) -> void:
+	for o in _chunks[c]:
+		var sp: Sprite2D = o.get("sprite")
+		if sp:
+			_animated.erase(sp)
+			sp.queue_free()
+	_chunks.erase(c)
+
+## Props near enough to `view` to matter for drawing.
+func props_in(view: Rect2) -> Array:
+	var out := []
+	for props in _chunks.values():
+		for o in props:
+			if view.intersects(o.rect):
+				out.append(o)
+	return out
 
 ## Keeps the chunks around every hero, drops the rest.
 func update_around(centers: Array) -> void:
@@ -78,8 +130,10 @@ func update_around(centers: Array) -> void:
 				_chunk(c)
 	for c in _chunks.keys():
 		if not wanted.has(c):
-			_chunks.erase(c)
-	queue_redraw()
+			_free_chunk(c)
+	var f := int(_anim * 6.0)
+	for sp in _animated:
+		sp.frame = f % sp.hframes
 
 ## Moves a circle at `p` out of any prop it overlaps.
 func push_out(p: Vector2, r: float) -> Vector2:
@@ -115,24 +169,3 @@ func free_spot(p: Vector2, r: float) -> Vector2:
 		p = push_out(p, r + 1.0)
 	return p
 
-## Props below the player's feet line are drawn by the "front" layer so the
-## hero walks behind tall trees and graves.
-func draw_props(ci: CanvasItem, front: bool, split_y: float) -> void:
-	var view: Rect2 = run.view_rect().grow(140)
-	for props in _chunks.values():
-		for o in props:
-			if (o.pos.y > split_y) != front or not view.has_point(o.pos):
-				continue
-			var def: Dictionary = PROPS[o.kind]
-			if def.has("sheet"):
-				var s := Db.sheet(def.sheet)
-				ci.draw_texture_rect_region(s._tex, Rect2(o.pos + Vector2(-s._w * 0.5, -s._h + 2), Vector2(s._w, s._h)), Db.frame_rect(s, _anim))
-			else:
-				var t := Db.tex(o.kind)
-				var sz := Vector2(t.get_size())
-				var scale := 0.5 if o.kind.begins_with("tree") else 1.0
-				sz *= scale
-				ci.draw_texture_rect(t, Rect2(o.pos + Vector2(-sz.x * 0.5, -sz.y + 4), sz), false)
-
-func _draw() -> void:
-	draw_props(self, false, run.player.position.y)

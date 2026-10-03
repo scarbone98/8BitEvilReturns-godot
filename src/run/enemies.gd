@@ -319,32 +319,62 @@ func mirror_step(delta: float) -> void:
 	queue_redraw()
 
 func _draw() -> void:
-	var player_x: float = run.player.position.x
 	var view: Rect2 = run.view_rect().grow(48)
+	var player_x: float = run.player.position.x
 	for i in pos.size():
-		if not view.has_point(pos[i]):
-			continue
-		var k := kidx[i]
-		var s: Dictionary = _kind_sheet[k]
-		var src := Db.frame_rect(s, anim[i])
-		var w: float = s._w * scale_[i]
-		var h: float = s._h * scale_[i]
-		var flip := (player_x < pos[i].x) == (_kind_faces[k] > 0)
-		var rect := Rect2(pos[i].x - w * 0.5, pos[i].y - h + radius[i] * 0.5, w, h)
-		var col := Color(1, 1, 1, _kind_alpha[k])
-		if flash[i] > 0.0:
-			col = Color(1, 0.35, 0.35, col.a)
-		elif frozen > 0.0:
-			col = Color(0.6, 0.8, 1.0, col.a)
-		if flip:
-			# Mirror around the enemy's centre line.
-			draw_set_transform(Vector2(pos[i].x, 0.0), 0.0, Vector2(-1, 1))
-			draw_texture_rect_region(s._tex, Rect2(-w * 0.5, rect.position.y, w, h), src, col)
-			draw_set_transform(Vector2.ZERO)
-		else:
-			draw_texture_rect_region(s._tex, rect, src, col)
-		if boss[i] == 1:
-			var bw := 30.0
-			var by := pos[i].y + radius[i] * 0.5 + 3
-			draw_rect(Rect2(pos[i].x - bw * 0.5, by, bw, 3), Color(0, 0, 0, 0.7))
-			draw_rect(Rect2(pos[i].x - bw * 0.5, by, bw * hp[i] / max_hp[i], 3), Color(0.9, 0.15, 0.2))
+		if view.has_point(pos[i]):
+			_draw_one(self, i, player_x)
+
+## Where an enemy's feet are, for sorting against props.
+func feet_y(i: int) -> float:
+	return pos[i].y + radius[i] * 0.5
+
+func _rect(i: int) -> Rect2:
+	var s: Dictionary = _kind_sheet[kidx[i]]
+	var w: float = s._w * scale_[i]
+	var h: float = s._h * scale_[i]
+	return Rect2(pos[i].x - w * 0.5, feet_y(i) - h, w, h)
+
+## Enemies are drawn under the props and heroes. This draws, on top, the few
+## that overlap a prop while standing in front of it, so a grave never covers
+## a monster that's nearer the camera than it.
+func draw_in_front_of_props(ci: CanvasItem) -> void:
+	var view: Rect2 = run.view_rect().grow(48)
+	var player_x: float = run.player.position.x
+	var picked := {}
+	for o in run.obstacles.props_in(view):
+		var r: Rect2 = o.rect
+		var base: float = o.pos.y + 4.0
+		for i in query_circle(r.get_center(), r.size.length() * 0.5 + 24.0):
+			if not picked.has(i) and feet_y(i) > base and _rect(i).intersects(r):
+				picked[i] = true
+	var order: Array = picked.keys()
+	order.sort_custom(func(a, b): return feet_y(a) < feet_y(b))
+	for i in order:
+		_draw_one(ci, i, player_x)
+
+func _draw_one(ci: CanvasItem, i: int, player_x: float) -> void:
+	var k := kidx[i]
+	var s: Dictionary = _kind_sheet[k]
+	var src := Db.frame_rect(s, anim[i])
+	var rect := _rect(i)
+	var w := rect.size.x
+	var h := rect.size.y
+	var flip := (player_x < pos[i].x) == (_kind_faces[k] > 0)
+	var col := Color(1, 1, 1, _kind_alpha[k])
+	if flash[i] > 0.0:
+		col = Color(1, 0.35, 0.35, col.a)
+	elif frozen > 0.0:
+		col = Color(0.6, 0.8, 1.0, col.a)
+	if flip:
+		# Mirror around the enemy's centre line.
+		ci.draw_set_transform(Vector2(pos[i].x, 0.0), 0.0, Vector2(-1, 1))
+		ci.draw_texture_rect_region(s._tex, Rect2(-w * 0.5, rect.position.y, w, h), src, col)
+		ci.draw_set_transform(Vector2.ZERO)
+	else:
+		ci.draw_texture_rect_region(s._tex, rect, src, col)
+	if boss[i] == 1:
+		var bw := 30.0
+		var by := feet_y(i) + 3
+		ci.draw_rect(Rect2(pos[i].x - bw * 0.5, by, bw, 3), Color(0, 0, 0, 0.7))
+		ci.draw_rect(Rect2(pos[i].x - bw * 0.5, by, bw * hp[i] / max_hp[i], 3), Color(0.9, 0.15, 0.2))
