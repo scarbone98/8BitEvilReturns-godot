@@ -80,11 +80,12 @@ func fire() -> bool:
 	match def.behavior:
 		"shooter":
 			var dir: Vector2 = player.facing
-			if def.get("aim") == "nearest":
+			if def.get("aim") == "nearest" or def.get("aim") == "auto":
 				var i: int = e.nearest(p, raw("range"))
-				if i == -1:
-					return false
-				dir = (e.pos[i] - p).normalized()
+				if i != -1:
+					dir = (e.pos[i] - p).normalized()
+				elif def.get("aim") == "nearest":
+					return false  # "auto" falls back to the way you're facing
 			var n := amount()
 			if def.get("aim") == "spin":
 				_spin += 0.45

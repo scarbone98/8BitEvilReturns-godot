@@ -12,7 +12,8 @@ extends RefCounted
 ## Numbers marked (orig) are from the Unity build; the rest are first-pass tuning.
 ##
 ## Behaviours (see Weapon.fire and Shots):
-##   shooter   projectiles; aim = facing | nearest | spin, spread (rad between shots)
+##   shooter   projectiles; aim = facing | nearest | auto (nearest, else facing) | spin,
+##             spread (rad between shots)
 ##   slash     melee arcs around the hero
 ##   boomerang out and back, hits on both legs
 ##   strike    instant hit at enemies; target = random | nearest, warn = seconds of crosshair first
@@ -39,7 +40,7 @@ const WEAPONS := {
 	# ================================================================ Original nine
 	"crossbow": {
 		"name": "CrossBow", "quote": "IT'S HIGH NOOOON", "icon": "runic_crossbow_skill",
-		"behavior": "shooter", "sheet": "crossbow_bolt", "aim": "facing", "rot_offset": PI / 4,
+		"behavior": "shooter", "sheet": "crossbow_bolt", "aim": "auto", "rot_offset": PI / 4,
 		"base": {"cooldown": 0.5, "damage": 5.0, "speed": 15.0 * UNIT, "pierce": 1, "range": 260.0},  # (orig) 0.5 / 5 / 15
 		"levels": [
 			{"desc": "Fire 1 more bolt", "amount": 1},
