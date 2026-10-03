@@ -4,7 +4,7 @@ extends RefCounted
 # `faces` is the direction the art faces so it can be flipped to face the player.
 const ENEMIES := {
 	"zombie": {"sheet": "zombie", "hp": 10.0, "speed": 26.0, "damage": 8.0, "radius": 6.0, "candy": 0, "faces": 1},
-	"skull": {"sheet": "skull", "hp": 6.0, "speed": 48.0, "damage": 6.0, "radius": 6.0, "candy": 0, "faces": 1, "fly": true},
+	"skull": {"sheet": "skull", "hp": 6.0, "speed": 48.0, "damage": 6.0, "radius": 6.0, "candy": 0, "faces": 1},
 	"pumpkin": {"sheet": "pumpkin", "hp": 18.0, "speed": 30.0, "damage": 10.0, "radius": 6.0, "candy": 0, "faces": 1},
 	"ghost": {"sheet": "ghost", "hp": 22.0, "speed": 34.0, "damage": 10.0, "radius": 6.0, "candy": 1, "faces": 1, "fly": true, "alpha": 0.8},
 	"scarecrow": {"sheet": "scarecrow", "hp": 60.0, "speed": 24.0, "damage": 14.0, "radius": 8.0, "candy": 1, "faces": 1},

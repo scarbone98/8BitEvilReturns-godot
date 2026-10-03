@@ -352,11 +352,10 @@ func _hero_positions() -> Array:
 	return heroes.values().map(func(h): return h.position)
 
 func _follow_camera() -> void:
-	# Follow smoothly, rounded to whole *screen* pixels (not world pixels:
-	# at 2-5 screen pixels per world pixel, that made the view hop unevenly).
-	var root := get_tree().root
-	var k := float(root.size.y) / maxf(1.0, float(root.content_scale_size.y))
-	camera.position = (player.position * k).round() / k
+	# Follow exactly, like the original: no rounding at all. (Rounding to world
+	# pixels made the view hop; rounding to screen pixels made the floor move
+	# in uneven 1-2 pixel steps under a still hero.)
+	camera.position = player.position
 	camera.force_update_scroll()  # apply this frame, so the view never lags the hero
 	obstacles.update_around(_hero_positions())
 	# Snap the tiled ground to its tile size so it never runs out.

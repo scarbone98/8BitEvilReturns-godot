@@ -6,7 +6,7 @@ extends Node2D
 signal died(pos: Vector2, kind: String, is_boss: bool, attacker: int)
 
 const CELL := 32.0
-const GRID := 128  # cells per side of the grid window (4096px), centred on the players
+const GRID := 256  # cells per side of the grid window (8192px), centred on the players
 
 # Per-kind lookups, built once so the hot loops never touch dictionaries.
 var _kinds: Array[String] = []
@@ -214,19 +214,9 @@ func step(delta: float, targets: PackedVector2Array, view: Rect2) -> void:
 	var nt := targets.size()
 	var stagger := _frame % 3
 	var half := _frame % 2
-	var near := view.grow(64)
+	var near := view.size * 0.5 + Vector2(64, 64)
 	for i in n:
 		var p := pos[i]
-		# Off-screen enemies update every other frame, at double step, and skip separation.
-		var onscreen := near.has_point(p)
-		var dt := delta
-		if not onscreen:
-			if i % 2 != half:
-				continue
-			dt = delta * 2.0
-		anim[i] += dt
-		if flash[i] > 0.0:
-			flash[i] = maxf(0.0, flash[i] - dt)
 		var goal := targets[0]
 		var to := goal - p
 		var d2 := to.length_squared()
@@ -238,6 +228,17 @@ func step(delta: float, targets: PackedVector2Array, view: Rect2) -> void:
 				to = o
 				goal = targets[t]
 		var dist := sqrt(d2)
+		# Off every player's screen: update every other frame, at double step,
+		# without separation. (Near *any* player counts as on screen.)
+		var onscreen := absf(to.x) < near.x and absf(to.y) < near.y
+		var dt := delta
+		if not onscreen:
+			if i % 2 != half:
+				continue
+			dt = delta * 2.0
+		anim[i] += dt
+		if flash[i] > 0.0:
+			flash[i] = maxf(0.0, flash[i] - dt)
 		# Enemies left far behind wrap to the other side of their target.
 		if dist > far and boss[i] == 0:
 			pos[i] = goal + to / dist * (far * 0.6)
