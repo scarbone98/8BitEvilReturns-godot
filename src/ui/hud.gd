@@ -20,8 +20,8 @@ func _ready() -> void:
 	pause.expand_icon = false
 	pause.custom_minimum_size = Vector2(16, 16)
 	pause.set_anchors_and_offsets_preset(PRESET_TOP_RIGHT)
-	pause.offset_left = -24; pause.offset_right = -4
-	pause.offset_top = 2; pause.offset_bottom = 22
+	pause.offset_left = -22; pause.offset_right = -6
+	pause.offset_top = 46; pause.offset_bottom = 62
 	pause.focus_mode = FOCUS_NONE
 	pause.pressed.connect(func(): pause_pressed.emit())
 	add_child(pause)
@@ -67,50 +67,51 @@ func _draw() -> void:
 	var p = run.player
 	var view := get_viewport_rect().size
 	var W := view.x
-	# Laid out like the original: silver, kills and the menu on top; time and
-	# level under them; then the candy XP bar and the hearts.
-	var coin := Db.sheet("silver")
-	draw_texture_rect_region(coin._tex, Rect2(6, 4, 16, 16), Rect2(0, 0, coin._w, coin._h))
-	_text(Vector2(24, 17), "x%d" % p.silver_found, 8, UI.PALE, HORIZONTAL_ALIGNMENT_LEFT, body_font)
-	var kills := str(p.kills)
-	var kw := body_font.get_string_size(kills, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
-	draw_texture_rect(Db.tex("skull"), Rect2(W * 0.5 - (16 + 4 + kw) * 0.5, 4, 16, 16), false)
-	_text(Vector2(W * 0.5 - (16 + 4 + kw) * 0.5 + 20, 17), kills, 11, UI.PALE, HORIZONTAL_ALIGNMENT_LEFT, body_font)
-	_text(Vector2(W * 0.5, 34), UI.time_text(run.time), 11, UI.PALE, HORIZONTAL_ALIGNMENT_CENTER, body_font)
-	_text(Vector2(W - 6, 34), "Level: %d" % run.level, 11, UI.PALE, HORIZONTAL_ALIGNMENT_RIGHT, body_font)
-	# XP bar: the original art stretched across, segments and all (drawn at
-	# screen resolution, so the slight stretch doesn't show).
+	# XP bar from the original art: the candy cap and left end, the bar body
+	# stretched from a single plain column, and the right end.
 	var bar := Db.tex("xpbar")
-	var top := 36.0
-	var x0 := 2.0
-	var x1 := W - 2.0
-	var bsc := (x1 - x0) / 256.0
-	draw_texture_rect(bar, Rect2(x0, top, x1 - x0, 32), false)
+	var x0 := 4.0
+	var x1 := W - 4.0
+	var mid_from := x0 + 40.0
+	var mid_to := x1 - 16.0
+	draw_texture_rect_region(bar, Rect2(x0, 0, 40, 32), Rect2(0, 0, 40, 32))
+	draw_texture_rect_region(bar, Rect2(mid_from, 0, mid_to - mid_from, 32), Rect2(60, 0, 1, 32))
+	draw_texture_rect_region(bar, Rect2(mid_to, 0, 16, 32), Rect2(240, 0, 16, 32))
 	var frac: float = clampf(run.xp / (run.xp_next * run._xp_scale()), 0.0, 1.0)
-	var fill_from := x0 + 26.0 * bsc
-	var fill_len := (x1 - 6.0 * bsc) - fill_from
-	draw_rect(Rect2(fill_from, top + 13, fill_len * frac, 6), Color("f28a2e"))
-	# Hearts at their native size, ten to a row.
+	var fill_from := x0 + 26.0
+	var fill_len := (x1 - 4.0) - fill_from
+	draw_rect(Rect2(fill_from, 13, fill_len * frac, 6), Color("5ad1ff"))
+	_text(Vector2(W - 6, 38), "LV %d" % run.level, 8, UI.GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
+	# Timer, the score.
+	_text(Vector2(W * 0.5, 44), UI.time_text(run.time), 12, UI.PALE, HORIZONTAL_ALIGNMENT_CENTER)
+	# Hearts at half size, seven to a row so they stay clear of the timer.
 	var hearts := ceili(p.max_hp() / HEART_HP)
 	var hp: float = p.hp
 	for i in hearts:
-		var r := Rect2(6 + (i % 10) * 16, top + 30 + (i / 10) * 16, 16, 16)
+		var r := Rect2(6 + (i % 7) * 10, 30 + (i / 7) * 10, 8, 8)
 		draw_texture_rect(Db.tex("heart_empty"), r, false)
 		var fill := clampf((hp - i * HEART_HP) / HEART_HP, 0.0, 1.0)
 		if fill > 0.0:
-			var cols := ceilf(16.0 * fill)
-			draw_texture_rect_region(Db.tex("heart"), Rect2(r.position, Vector2(cols, 16)), Rect2(0, 0, cols, 16))
+			var cols := ceilf(16.0 * fill / 2.0) * 2.0
+			draw_texture_rect_region(Db.tex("heart"), Rect2(r.position, Vector2(cols * 0.5, 8)), Rect2(0, 0, cols, 16))
+	# Kills and silver.
+	var sy := 30.0 + ceilf(hearts / 7.0) * 10.0 + 2.0
+	draw_texture_rect(Db.tex("skull"), Rect2(4, sy, 16, 16), false)
+	_text(Vector2(22, sy + 12), str(p.kills), 8)
+	var coin := Db.sheet("silver")
+	draw_texture_rect_region(coin._tex, Rect2(4, sy + 17, 16, 16), Rect2(0, 0, coin._w, coin._h))
+	_text(Vector2(22, sy + 29), str(p.silver_found), 8)
 	if _banner != "":
 		var by := view.y * 0.4
 		draw_rect(Rect2(0, by - 14, W, 22), Color(0, 0, 0, 0.6))
 		var dots := ".".repeat(int(Time.get_ticks_msec() / 400) % 4)
 		_text(Vector2(W * 0.5, by + 2), _banner.trim_suffix("...") + dots, 8, UI.GOLD, HORIZONTAL_ALIGNMENT_CENTER)
-	var ty := 110.0
+	var ty := 64.0
 	for t in _toasts:
 		_text(Vector2(W * 0.5, ty), t[0], 8, Color(t[1], clampf(t[2], 0.0, 1.0)), HORIZONTAL_ALIGNMENT_CENTER, body_font)
 		ty += 11.0
 	if run.mode != "solo" and Net.code != "":
-		_text(Vector2(W - 6, 100), "ROOM " + Net.code, 8, UI.DIM, HORIZONTAL_ALIGNMENT_RIGHT, body_font)
+		_text(Vector2(W - 6, 82), "ROOM " + Net.code, 8, UI.DIM, HORIZONTAL_ALIGNMENT_RIGHT, body_font)
 	# Owned weapons and passives along the bottom.
 	var x := 4.0
 	var y := view.y - 21.0
