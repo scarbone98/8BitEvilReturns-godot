@@ -1,5 +1,5 @@
 extends Node
-## Switches between the title screen, character select and a run.
+## Menus: title, hero + stage select, power-up shop, collection. Then a run.
 
 const RunScript := preload("res://src/run/run.gd")
 
@@ -37,136 +37,308 @@ func _screen_root() -> Control:
 	_swap(layer)
 	return root
 
+## A full-screen column with a title, for the menu screens.
+func _page(title: String) -> VBoxContainer:
+	var root := _screen_root()
+	var box := VBoxContainer.new()
+	box.set_anchors_preset(Control.PRESET_FULL_RECT)
+	box.offset_left = 8; box.offset_right = -8
+	box.offset_top = 10; box.offset_bottom = -10
+	box.add_theme_constant_override("separation", 6)
+	root.add_child(box)
+	box.add_child(UI.label(title, 10, UI.GOLD))
+	return box
+
+func _scroll(child: Control) -> ScrollContainer:
+	var sc := ScrollContainer.new()
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	child.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(child)
+	return sc
+
+## Runs `refresh` now and whenever the profile changes, while `node` is up.
+func _live(node: Node, refresh: Callable) -> void:
+	refresh.call()
+	Meta.changed.connect(refresh)
+	node.tree_exiting.connect(func(): Meta.changed.disconnect(refresh))
+
+# ---------------------------------------------------------------- Title
+
 func show_title() -> void:
 	var root := _screen_root()
 	var box := VBoxContainer.new()
 	box.set_anchors_preset(Control.PRESET_FULL_RECT)
 	box.offset_left = 24; box.offset_right = -24
-	box.offset_top = 24; box.offset_bottom = -24
+	box.offset_top = 16; box.offset_bottom = -16
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_theme_constant_override("separation", 10)
+	box.add_theme_constant_override("separation", 8)
 	root.add_child(box)
-	var logo := UI.icon(Db.tex("title"), 150)
-	logo.custom_minimum_size = Vector2(0, 150)
+	var logo := UI.icon(Db.tex("title"), 130)
+	logo.custom_minimum_size = Vector2(0, 130)
 	box.add_child(logo)
-	var hero := SheetView.new(Db.CHARACTERS[Meta.selected].run, Vector2(0, 48))
-	box.add_child(hero)
+	box.add_child(SheetView.new(Db.CHARACTERS[Meta.selected].run, Vector2(0, 40)))
 	var play := UI.button("PLAY", show_select, 28)
 	box.add_child(play)
+	box.add_child(UI.button("POWER UPS", show_powerups, 22))
+	box.add_child(UI.button("COLLECTION", show_collection, 22))
 	var stats := UI.label("", 8, UI.DIM)
 	box.add_child(stats)
-	var refresh := func():
-		stats.text = "Best %s   Silver %d" % [UI.time_text(Meta.best_seconds), Meta.silver]
-	refresh.call()
-	Meta.changed.connect(refresh)
-	stats.tree_exiting.connect(func(): Meta.changed.disconnect(refresh))
+	_live(stats, func():
+		stats.text = "Best %s   Silver %d" % [UI.time_text(Meta.best_seconds), Meta.silver])
 	play.call_deferred("grab_focus")
 
-func show_select() -> void:
-	var root := _screen_root()
-	var box := VBoxContainer.new()
-	box.set_anchors_preset(Control.PRESET_FULL_RECT)
-	box.offset_left = 10; box.offset_right = -10
-	box.offset_top = 14; box.offset_bottom = -14
-	box.add_theme_constant_override("separation", 6)
-	root.add_child(box)
-	box.add_child(UI.label("CHOOSE YOUR HERO", 10, UI.GOLD))
+# ---------------------------------------------------------------- Heroes
 
+func show_select() -> void:
+	var box := _page("CHOOSE YOUR HERO")
 	var silver_l := UI.label("", 8, UI.PALE)
 	box.add_child(silver_l)
 
 	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 6)
-	grid.add_theme_constant_override("v_separation", 6)
-	box.add_child(grid)
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 4)
+	grid.add_theme_constant_override("v_separation", 4)
+	var scroll := _scroll(grid)
+	scroll.custom_minimum_size = Vector2(0, 150)
+	box.add_child(scroll)
 
-	# Details for the highlighted hero.
 	var info := PanelContainer.new()
-	info.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var info_box := VBoxContainer.new()
-	info_box.add_theme_constant_override("separation", 4)
+	info_box.add_theme_constant_override("separation", 3)
 	info.add_child(info_box)
 	box.add_child(info)
 
-	var start := UI.button("START", func(): _start_run(), 28)
+	# Stage picker: steps through the stages that are unlocked.
+	var stage_row := HBoxContainer.new()
+	var stage_l := UI.label("", 8, UI.PALE)
+	stage_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var stage_ids: Array = Db.STAGES.keys()
+	var cycle := func(dir: int):
+		var i := stage_ids.find(Meta.stage)
+		for k in stage_ids.size():
+			i = (i + dir + stage_ids.size()) % stage_ids.size()
+			if Meta.content_unlocked(stage_ids[i]):
+				break
+		Meta.stage = stage_ids[i]
+		Meta.save()
+	stage_row.add_child(UI.button("<", func(): cycle.call(-1), 20))
+	stage_row.add_child(stage_l)
+	stage_row.add_child(UI.button(">", func(): cycle.call(1), 20))
+	box.add_child(stage_row)
+	var stage_about := UI.body("", 10, UI.DIM)
+	box.add_child(stage_about)
+
+	var start := UI.button("START", func(): pass, 28)
 	box.add_child(start)
-	var back := UI.button("BACK", show_title, 20)
-	box.add_child(back)
+	box.add_child(UI.button("BACK", show_title, 20))
 
 	var cards := {}
-	var refresh: Callable
-	refresh = func():
+	for id in Db.CHARACTERS:
+		var c := UI.button("", func():
+			Meta.selected = id
+			Meta.save(), 54)
+		c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var v := SheetView.new(Db.CHARACTERS[id].idle, Vector2.ZERO)
+		v.set_anchors_preset(Control.PRESET_FULL_RECT)
+		v.offset_top = 4; v.offset_bottom = -12; v.offset_left = 2; v.offset_right = -2
+		c.add_child(v)
+		var nl := UI.label("", 6)
+		nl.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+		nl.offset_top = -11; nl.offset_bottom = -3
+		c.add_child(nl)
+		c.set_meta("view", v)
+		c.set_meta("name", nl)
+		cards[id] = c
+		grid.add_child(c)
+
+	var refresh := func():
 		silver_l.text = "Silver: %d" % Meta.silver
 		for id in cards:
 			var c: Button = cards[id]
 			var ch: Dictionary = Db.CHARACTERS[id]
-			var lock_l: Label = c.get_meta("lock")
-			lock_l.text = "" if Meta.is_unlocked(id) else "%d" % ch.cost
+			var open := Meta.is_unlocked(id)
+			var feat_locked: bool = ch.has("feat") and not open
 			c.add_theme_stylebox_override("normal", UI.frame(id == Meta.selected))
-			var view: SheetView = c.get_meta("view")
-			view.tint = Color.WHITE if Meta.is_unlocked(id) else Color(0.2, 0.2, 0.25)
+			(c.get_meta("view") as SheetView).tint = Color.WHITE if open else (Color(0, 0, 0, 0.85) if feat_locked else Color(0.25, 0.25, 0.3))
+			(c.get_meta("name") as Label).text = ch.name if not feat_locked else "???"
 		for n in info_box.get_children():
 			n.queue_free()
 		var sel: Dictionary = Db.CHARACTERS[Meta.selected]
-		var w: Dictionary = Db.WEAPONS[sel.weapon]
-		info_box.add_child(UI.label(sel.name, 10, UI.GOLD))
-		info_box.add_child(UI.body(sel.perk, 12))
-		var wrow := HBoxContainer.new()
-		wrow.alignment = BoxContainer.ALIGNMENT_CENTER
-		wrow.add_child(UI.icon(Db.icon_texture(w.icon), 28))
-		wrow.add_child(UI.label("Starts with " + w.name, 8, UI.PALE))
-		info_box.add_child(wrow)
-		if Meta.is_unlocked(Meta.selected):
-			start.disabled = false
-			start.text = "START"
+		var open := Meta.is_unlocked(Meta.selected)
+		if sel.has("feat") and not open:
+			info_box.add_child(UI.label("???", 10, UI.GOLD))
+			info_box.add_child(UI.body("Unlock: " + Db.FEATS[sel.feat].desc, 12))
+			start.disabled = true
+			start.text = "LOCKED"
 		else:
-			start.disabled = Meta.silver < int(sel.cost)
-			start.text = "UNLOCK (%d SILVER)" % sel.cost
-			# The merchant sells heroes.
-			var m := HBoxContainer.new()
-			m.alignment = BoxContainer.ALIGNMENT_CENTER
-			m.add_child(SheetView.new("merchant", Vector2(48, 48)))
-			var q := UI.body("\"Heroes aren't free, friend.\"", 11, UI.DIM)
-			q.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			q.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-			m.add_child(q)
-			info_box.add_child(m)
-
-	for id in Db.CHARACTERS:
-		var ch: Dictionary = Db.CHARACTERS[id]
-		var c := UI.button("", func():
-			Meta.selected = id
-			Meta.save()
-			refresh.call(), 72)
-		c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var v := SheetView.new(ch.idle, Vector2(0, 0))
-		v.set_anchors_preset(Control.PRESET_FULL_RECT)
-		v.offset_top = 4; v.offset_bottom = -14
-		c.add_child(v)
-		var nl := UI.label(ch.name, 8)
-		nl.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-		nl.offset_top = -14; nl.offset_bottom = -4
-		c.add_child(nl)
-		var ll := UI.label("", 8, UI.GOLD)
-		ll.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-		ll.position = Vector2(-40, 5)
-		ll.size = Vector2(34, 10)
-		ll.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		c.add_child(ll)
-		c.set_meta("lock", ll)
-		c.set_meta("view", v)
-		cards[id] = c
-		grid.add_child(c)
+			var w: Dictionary = Db.WEAPONS[sel.weapon]
+			info_box.add_child(UI.label(sel.name, 10, UI.GOLD))
+			info_box.add_child(UI.body(sel.perk, 12))
+			var wrow := HBoxContainer.new()
+			wrow.alignment = BoxContainer.ALIGNMENT_CENTER
+			wrow.add_child(UI.icon(Db.icon_texture(w.icon), 22))
+			wrow.add_child(UI.label("Starts with " + w.name, 8, UI.PALE))
+			info_box.add_child(wrow)
+			if open:
+				start.disabled = false
+				start.text = "START"
+			else:
+				start.disabled = Meta.silver < int(sel.cost)
+				start.text = "UNLOCK (%d SILVER)" % sel.cost
+				var m := HBoxContainer.new()
+				m.add_child(SheetView.new("merchant", Vector2(36, 36)))
+				var q := UI.body("\"Heroes aren't free, friend.\"", 11, UI.DIM)
+				q.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				q.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+				m.add_child(q)
+				info_box.add_child(m)
+		var st: Dictionary = Db.STAGES[Meta.stage]
+		stage_l.text = "STAGE: " + st.name
+		var locked := Db.STAGES.keys().filter(func(sid): return not Meta.content_unlocked(sid)).size()
+		stage_about.text = st.get("about", "") + ("" if locked == 0 else "  (%d more to unlock)" % locked)
 
 	start.pressed.connect(func():
-		if not Meta.is_unlocked(Meta.selected):
-			if Meta.try_unlock(Meta.selected):
-				refresh.call())
-	refresh.call()
-	Meta.changed.connect(refresh)
-	silver_l.tree_exiting.connect(func(): Meta.changed.disconnect(refresh))
+		if Meta.is_unlocked(Meta.selected):
+			_start_run()
+		else:
+			Meta.try_unlock(Meta.selected))
+	_live(silver_l, refresh)
 	cards[Meta.selected].call_deferred("grab_focus")
+
+# ---------------------------------------------------------------- Power ups
+
+func show_powerups() -> void:
+	var box := _page("POWER UPS")
+	var silver_l := UI.label("", 8, UI.PALE)
+	box.add_child(silver_l)
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 3)
+	box.add_child(_scroll(list))
+	var rows := {}
+	for id in Db.POWERUPS:
+		var p: Dictionary = Db.POWERUPS[id]
+		var b := UI.button("", func(): Meta.buy_powerup(id), 34)
+		var row := HBoxContainer.new()
+		row.set_anchors_preset(Control.PRESET_FULL_RECT)
+		row.offset_left = 6; row.offset_right = -6
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_theme_constant_override("separation", 6)
+		var ic := UI.icon(Db.icon_texture(p.icon), 22)
+		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(ic)
+		var col := VBoxContainer.new()
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col.alignment = BoxContainer.ALIGNMENT_CENTER
+		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		col.add_theme_constant_override("separation", 1)
+		var name_l := UI.label(p.name, 8, UI.PALE, HORIZONTAL_ALIGNMENT_LEFT)
+		col.add_child(name_l)
+		var desc_l := UI.body(p.desc, 10, UI.DIM)
+		desc_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		col.add_child(desc_l)
+		row.add_child(col)
+		var price := UI.label("", 8, UI.GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
+		row.add_child(price)
+		b.add_child(row)
+		b.set_meta("name", name_l)
+		b.set_meta("price", price)
+		rows[id] = b
+		list.add_child(b)
+	box.add_child(UI.button("REFUND ALL", func(): Meta.refund_powerups(), 20))
+	box.add_child(UI.button("BACK", show_title, 20))
+	_live(silver_l, func():
+		silver_l.text = "Silver: %d" % Meta.silver
+		for id in rows:
+			var p: Dictionary = Db.POWERUPS[id]
+			var rank := Meta.powerup_rank(id)
+			var maxed := rank >= int(p.max)
+			(rows[id].get_meta("name") as Label).text = "%s %s" % [p.name, "*".repeat(rank) + ".".repeat(int(p.max) - rank)]
+			(rows[id].get_meta("price") as Label).text = "MAX" if maxed else str(Meta.powerup_cost(id))
+			rows[id].disabled = maxed or Meta.silver < Meta.powerup_cost(id))
+	rows.values()[0].call_deferred("grab_focus")
+
+# ---------------------------------------------------------------- Collection
+
+func show_collection(tab := "feats") -> void:
+	var box := _page("COLLECTION")
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 4)
+	for t in [["feats", "FEATS"], ["weapons", "WEAPONS"], ["passives", "ITEMS"]]:
+		var b := UI.button(t[1], func(): show_collection(t[0]), 20)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.add_theme_stylebox_override("normal", UI.frame(t[0] == tab))
+		tabs.add_child(b)
+	box.add_child(tabs)
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 3)
+	box.add_child(_scroll(list))
+	match tab:
+		"feats":
+			(box.get_child(0) as Label).text = "FEATS  %d/%d" % [Meta.feats.size(), Db.FEATS.size()]
+			for f in Db.FEATS:
+				var d: Dictionary = Db.FEATS[f]
+				var done := Meta.feats.has(f)
+				var rewards := []
+				for id in d.unlocks:
+					rewards.append(_content_name(id))
+				for c in Db.CHARACTERS:
+					if Db.CHARACTERS[c].get("feat") == f:
+						rewards.append(Db.CHARACTERS[c].name)
+				var text: String = d.desc
+				if not rewards.is_empty():
+					text += ("  -> " + ", ".join(rewards)) if done else "  -> ???"
+				list.add_child(_entry(d.name, text, done))
+		"weapons":
+			var found := 0
+			for id in Db.base_weapons():
+				var d: Dictionary = Db.WEAPONS[id]
+				var known := Meta.content_unlocked(id)
+				var text: String = ('"%s"' % d.quote) if known else "Unlock: " + _unlock_hint(id)
+				for key in ["evolve", "union"]:
+					if d.get(key) is Dictionary and known:
+						var into: Dictionary = Db.WEAPONS[d[key].into]
+						var made := Meta.evolved.has(d[key].into)
+						found += int(made)
+						text += "\n+ %s -> %s" % [Db.upgrade_def(d[key].with).name, into.name if made else "???"]
+				list.add_child(_entry(d.name if known else "???", text, known, d.icon))
+			(box.get_child(0) as Label).text = "EVOLUTIONS  %d/%d" % [Meta.evolved.size(), Db.WEAPONS.size() - Db.base_weapons().size()]
+		"passives":
+			for id in Db.PASSIVES:
+				var d: Dictionary = Db.PASSIVES[id]
+				var known := Meta.content_unlocked(id)
+				list.add_child(_entry(d.name if known else "???", d.desc if known else "Unlock: " + _unlock_hint(id), known, d.icon))
+	box.add_child(UI.button("BACK", show_title, 20))
+
+func _entry(title: String, text: String, lit: bool, icon_id := "") -> Control:
+	var p := PanelContainer.new()
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	if icon_id != "":
+		var ic := UI.icon(Db.icon_texture(icon_id), 22)
+		ic.modulate = Color.WHITE if lit else Color(0, 0, 0, 0.8)
+		row.add_child(ic)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 1)
+	col.add_child(UI.label(title, 8, UI.GOLD if lit else UI.DIM, HORIZONTAL_ALIGNMENT_LEFT))
+	var t := UI.body(text, 10, UI.PALE if lit else UI.DIM)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	col.add_child(t)
+	row.add_child(col)
+	p.add_child(row)
+	return p
+
+func _content_name(id: String) -> String:
+	if Db.STAGES.has(id): return Db.STAGES[id].name
+	if Db.CHARACTERS.has(id): return Db.CHARACTERS[id].name
+	return Db.upgrade_def(id).get("name", id)
+
+func _unlock_hint(id: String) -> String:
+	var f := Db.feat_for(id)
+	return Db.FEATS[f].desc if f != "" else "?"
+
+# ---------------------------------------------------------------- Run
 
 func _start_run(dev := false) -> void:
 	if not dev and not Meta.is_unlocked(Meta.selected):
@@ -174,7 +346,7 @@ func _start_run(dev := false) -> void:
 	var run := RunScript.new()
 	run.process_mode = Node.PROCESS_MODE_PAUSABLE
 	_swap(run)
-	run.start(Meta.selected)
+	run.start(Meta.selected, Meta.stage if not dev else str(Bridge.flags().get("stage", "graveyard")))
 	if dev:
 		run.apply_dev_flags(Bridge.flags())
 	run.quit_to_menu.connect(show_select)

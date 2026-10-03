@@ -75,24 +75,26 @@ func step(delta: float) -> void:
 ## Returns false when the weapon had nothing to do (no targets).
 func fire() -> bool:
 	var shots = run.shots
+	var e = run.enemies
 	var p: Vector2 = player.position
 	match def.behavior:
 		"shooter":
 			var dir: Vector2 = player.facing
 			if def.get("aim") == "nearest":
-				var i: int = run.enemies.nearest(p, raw("range"))
+				var i: int = e.nearest(p, raw("range"))
 				if i == -1:
 					return false
-				dir = (run.enemies.pos[i] - p).normalized()
+				dir = (e.pos[i] - p).normalized()
 			var n := amount()
 			if def.get("aim") == "spin":
 				_spin += 0.45
 				for k in n:
 					shots.bullet(self, p, Vector2.RIGHT.rotated(_spin + TAU * k / n))
 			else:
+				var gap: float = def.get("spread", 0.14)
 				for k in n:
-					var spread := (k - (n - 1) * 0.5) * 0.14
-					shots.bullet(self, p + dir.orthogonal() * (k - (n - 1) * 0.5) * 4.0, dir.rotated(spread))
+					var off := k - (n - 1) * 0.5
+					shots.bullet(self, p + dir.orthogonal() * off * 4.0, dir.rotated(off * gap))
 		"slash":
 			var dirs := [player.facing, -player.facing, player.facing.orthogonal(), -player.facing.orthogonal()]
 			for k in mini(amount(), 4):
@@ -100,19 +102,25 @@ func fire() -> bool:
 		"boomerang":
 			var n := amount()
 			var base_dir: Vector2 = player.facing
-			var i: int = run.enemies.nearest(p, 200.0)
+			var i: int = e.nearest(p, 200.0)
 			if i != -1:
-				base_dir = (run.enemies.pos[i] - p).normalized()
+				base_dir = (e.pos[i] - p).normalized()
 			for k in n:
 				shots.boomerang(self, base_dir.rotated(TAU * k / n if n > 2 else (k - (n - 1) * 0.5) * 0.5))
 		"strike":
-			var view: Rect2 = run.view_rect()
+			var view: Rect2 = run.view_rect_for(player)
 			var any := false
+			var taken := {}
 			for k in amount():
-				var i: int = run.enemies.random_on_screen(view)
+				var i: int
+				if def.get("target") == "nearest":
+					i = e.nearest_excluding(p, 160.0, taken)
+				else:
+					i = e.random_on_screen(view)
 				if i == -1:
 					break
-				shots.strike(self, run.enemies.pos[i])
+				taken[e.uid[i]] = true
+				shots.strike(self, e.pos[i])
 				any = true
 			return any
 		"orbit":
@@ -124,16 +132,76 @@ func fire() -> bool:
 		"flask":
 			for k in amount():
 				var target := p + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(30, raw("range"))
-				var i: int = run.enemies.random_on_screen(run.view_rect())
-				if i != -1 and k == 0:
-					target = run.enemies.pos[i]
+				var i: int = e.random_on_screen(run.view_rect_for(player))
+				if i != -1 and (k == 0 or def.has("explode")):
+					target = e.pos[i]
 				shots.flask(self, target)
 		"summon":
 			for k in amount():
 				shots.bat(self, p + Vector2.RIGHT.rotated(TAU * k / amount()) * 12.0)
+			for k in int(def.get("extra_wisps", 0)):
+				shots.wisp(self, p, Vector2.RIGHT.rotated(TAU * k / def.extra_wisps), "wisp")
 		"seeker":
-			if run.enemies.count() == 0:
+			if e.count() == 0:
 				return false
 			for k in amount():
 				shots.wisp(self, p, Vector2.RIGHT.rotated(TAU * k / amount()))
+		"aura":
+			if shots.count_for(self) == 0:
+				shots.aura(self)
+			return true
+		"nova":
+			shots.nova(self)
+			if def.has("heal"):
+				player.heal(float(def.heal))
+			if def.get("smite", false):
+				_smite()
+		"smite":
+			if e.count() == 0:
+				return false
+			_smite()
+		"bounce":
+			for k in amount():
+				shots.bounce(self, Vector2.RIGHT.rotated(randf() * TAU))
+		"chain":
+			return _chain()
+		"trail":
+			if not player.moving:
+				return true
+			shots.pool(self, p + Vector2(randf_range(-3, 3), randf_range(-2, 2)), "blood_drop", 8.0)
+		"turret":
+			var lamps: int = shots.count_for(self)
+			for k in maxi(0, amount() - lamps):
+				shots.turret(self, p + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(20, 40))
+	return true
+
+## Hits everything on screen once.
+func _smite() -> void:
+	var e = run.enemies
+	var view: Rect2 = run.view_rect_for(player)
+	for i in e.count():
+		if e.hp[i] > 0.0 and view.has_point(e.pos[i]):
+			run.shots.hit(self, i, damage(), player.position, 0.0)
+	run.shots.flash(self)
+
+## Jumps from the nearest enemy to the next nearest, `amount` times.
+func _chain() -> bool:
+	var e = run.enemies
+	var first: int = e.nearest(player.position, raw("range"))
+	if first == -1:
+		return false
+	var points := PackedVector2Array([player.position])
+	var taken := {}
+	var at := first
+	for k in amount() + 1:
+		if at == -1:
+			break
+		var hit_pos: Vector2 = e.pos[at]
+		points.append(hit_pos)
+		taken[e.uid[at]] = true
+		run.shots.hit(self, at, damage(), hit_pos, 10.0)
+		if def.has("explode"):
+			run.shots.explosion(self, hit_pos, float(def.explode) * area(), damage())
+		at = e.nearest_excluding(hit_pos, 70.0 * area(), taken)
+	run.shots.zap(self, points)
 	return true

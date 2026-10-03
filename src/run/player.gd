@@ -16,11 +16,16 @@ const STAT_DEFAULTS := {
 	"max_hp": 100.0, "max_hp_mul": 0.0, "regen": 0.0, "armor": 0.0,
 	"might": 0.0, "cooldown": 0.0, "area": 0.0, "proj_speed": 0.0,
 	"duration": 0.0, "amount": 0, "move": 0.0, "magnet": 0.0,
-	"growth": 0.0, "greed": 0.0,
+	"growth": 0.0, "greed": 0.0, "luck": 0.0, "curse": 0.0, "revival": 0,
 }
 
 var run
 var character: Dictionary
+var char_id := ""
+var bonus := {}        # power-up stats, fixed for the run
+var revivals := 0
+var healed := 0.0      # for feats
+var distance := 0.0
 var stats := {}
 var hp := 100.0
 var level := 1
@@ -41,16 +46,21 @@ var _touch_id := -1
 var _touch_origin := Vector2.ZERO
 var _touch_vec := Vector2.ZERO
 
-func setup(char_id: String) -> void:
-	character = Db.CHARACTERS[char_id]
+func setup(id: String, powerup_stats := {}) -> void:
+	char_id = id
+	character = Db.CHARACTERS[id]
+	bonus = powerup_stats
 	recalc_stats()
 	hp = max_hp()
+	revivals = int(stats.revival)
 
 func recalc_stats() -> void:
 	var old_max := max_hp() if not stats.is_empty() else 0.0
 	stats = STAT_DEFAULTS.duplicate()
 	for k in character.get("stats", {}):
 		stats[k] += character.stats[k]
+	for k in bonus:
+		stats[k] += bonus[k]
 	for id in passives:
 		var per: Dictionary = Db.PASSIVES[id].per_level
 		for k in per:
@@ -103,6 +113,7 @@ func step(delta: float) -> void:
 	if moving:
 		facing = dir.normalized()
 		position += dir * move_speed() * delta
+		distance += dir.length() * move_speed() * delta
 		position = run.obstacles.push_out(position, RADIUS)
 	_anim += delta
 	_invuln = maxf(0.0, _invuln - delta)
@@ -144,12 +155,20 @@ func take_hit(amount: float) -> void:
 	hp -= amount * (1.0 - stats.armor)
 	hp_changed.emit()
 	if hp <= 0.0:
+		if revivals > 0:
+			revivals -= 1
+			hp = max_hp() * 0.5
+			_invuln = 2.5
+			run.on_revive(self)
+			return
 		hp = 0.0
 		dead = true
 		died.emit()
 
 func heal(amount: float) -> void:
+	var before := hp
 	hp = minf(max_hp(), hp + amount)
+	healed += hp - before
 	hp_changed.emit()
 
 func add_xp(amount: float) -> void:
@@ -166,6 +185,8 @@ func add_xp(amount: float) -> void:
 func add_weapon(id: String) -> void:
 	var w := Weapon.new(id, self, run)
 	weapons[id] = w
+	if weapons.size() >= Db.MAX_WEAPONS:
+		run.weapons_full = 1
 
 func upgrade(id: String) -> void:
 	if Db.WEAPONS.has(id):
@@ -181,28 +202,38 @@ func upgrade(id: String) -> void:
 		if e.has("heal"): heal(e.heal)
 		if e.has("silver"): run.silver_found += int(e.silver)
 
-## Weapons at max level whose partner passive we own, ready to evolve.
+## What a chest can turn into right now: [[weapon, into, "evolve"|"union"], ...].
+## Evolve: weapon at max + its passive. Union: two weapons, both at max.
 func evolvable() -> Array:
 	var out := []
 	for id in weapons:
-		var w: Weapon = weapons[id]
-		var ev = Db.WEAPONS[id].get("evolve")
-		if ev and w.level >= Db.weapon_max_level(id) and passives.has(ev.with):
-			out.append(id)
+		var d: Dictionary = Db.WEAPONS[id]
+		if weapons[id].level < Db.weapon_max_level(id):
+			continue
+		var ev = d.get("evolve")
+		if ev is Dictionary and passives.has(ev.with):
+			out.append([id, ev.into, "evolve"])
+		var un = d.get("union")
+		if un is Dictionary and weapons.has(un.with) and weapons[un.with].level >= Db.weapon_max_level(un.with):
+			out.append([id, un.into, "union"])
 	return out
 
-func evolve(id: String) -> String:
-	var into: String = Db.WEAPONS[id].evolve.into
-	weapons.erase(id)
-	add_weapon(into)
-	return into
+## Applies one entry from evolvable(); returns the new weapon id.
+func evolve(e: Array) -> String:
+	weapons.erase(e[0])
+	if e[2] == "union":
+		weapons.erase(Db.WEAPONS[e[0]].union.with)
+	add_weapon(e[1])
+	return e[1]
 
-## Choices for the level-up screen.
+## Choices for the level-up screen. Luck can add a fourth.
 func upgrade_options(n := 3) -> Array:
+	if randf() < stats.luck * 0.5:
+		n += 1
 	var pool := []
 	for id in Db.WEAPONS:
 		var d: Dictionary = Db.WEAPONS[id]
-		if d.get("evolution", false):
+		if d.get("evolution", false) or not Meta.content_unlocked(id):
 			continue
 		if weapons.has(id):
 			if weapons[id].level < Db.weapon_max_level(id):
@@ -210,6 +241,8 @@ func upgrade_options(n := 3) -> Array:
 		elif _base_weapon_count() < Db.MAX_WEAPONS and not _owns_evolution_of(id):
 			pool.append(id)
 	for id in Db.PASSIVES:
+		if not Meta.content_unlocked(id):
+			continue
 		var lv: int = passives.get(id, 0)
 		if lv > 0 and lv < Db.PASSIVES[id].max_level:
 			pool.append(id)
@@ -224,9 +257,18 @@ func upgrade_options(n := 3) -> Array:
 func _base_weapon_count() -> int:
 	return weapons.size()
 
+## True if this weapon already became an evolution or union we hold.
 func _owns_evolution_of(id: String) -> bool:
-	var ev = Db.WEAPONS[id].get("evolve")
-	return ev != null and weapons.has(ev.into)
+	var d: Dictionary = Db.WEAPONS[id]
+	if d.get("evolve") is Dictionary and weapons.has(d.evolve.into):
+		return true
+	if d.get("union") is Dictionary and weapons.has(d.union.into):
+		return true
+	for w in weapons:
+		var r := Db.recipe_for(w)
+		if r.size() == 3 and r[2] == "union" and r[1] == id:
+			return true
+	return false
 
 func level_of(id: String) -> int:
 	if weapons.has(id): return weapons[id].level
@@ -237,8 +279,9 @@ func level_of(id: String) -> int:
 func _draw() -> void:
 	var s := Db.sheet(character.run if moving else character.idle)
 	var src := Db.frame_rect(s, _anim)
-	var w: float = s._w
-	var h: float = s._h
+	var k: float = character.get("scale", 1.0)
+	var w: float = s._w * k
+	var h: float = s._h * k
 	var shadow := Db.tex("shadow_small")
 	draw_texture_rect(shadow, Rect2(-7, -3, 14, 6), false, Color(1, 1, 1, 0.6))
 	var rect := Rect2(-w * 0.5, -h + 2, w, h)

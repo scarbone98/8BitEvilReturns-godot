@@ -65,6 +65,16 @@ func _post_to_page(msg: Dictionary) -> void:
 
 # ---------------------------------------------------------------- API
 
+## The Scareathon server. The arcade page tells us its address when it signs
+## us in; guests (and co-op rooms) use the production server, or `server=` flag.
+const DEFAULT_API := "https://scareathon-v3-production.up.railway.app"
+
+func server_url() -> String:
+	var f := flags()
+	if f.has("server"):
+		return str(f.server).trim_suffix("/")
+	return api_base if api_base != "" else DEFAULT_API
+
 func report_death(seconds: int) -> void:
 	_post_to_page({"type": "PLAYER_DIED", "score": seconds})
 
@@ -74,22 +84,18 @@ func submit_run(seconds: int, kills: int, candy: int) -> void:
 	_request("%s%s/runs" % [api_base, API], HTTPClient.METHOD_POST,
 		{"runTimeSeconds": seconds, "kills": kills, "candyCollected": candy})
 
-func fetch_player_data(done: Callable) -> void:
+## V2's own account save, kept apart from the Unity game's player data.
+## done(code, {save, rev}); a 409 from store_save means another device saved
+## first and carries the newer copy.
+func load_save(done: Callable) -> void:
 	if not is_signed_in():
 		return
-	_request("%s%s/getUserData?userId=%s" % [api_base, API, user_id], HTTPClient.METHOD_GET, null, done)
+	_request("%s%s/v2/save" % [api_base, API], HTTPClient.METHOD_GET, null, done)
 
-func save_player_data(silver: int, unlocked: Array) -> void:
+func store_save(save: Dictionary, rev: int, done: Callable) -> void:
 	if not is_signed_in():
 		return
-	_request("%s%s/setUserData" % [api_base, API], HTTPClient.METHOD_POST,
-		{"userId": user_id, "silverAmount": silver, "unlockedCharacters": unlocked})
-
-func unlock_character(character_name: String, cost: int, done: Callable) -> void:
-	if not is_signed_in():
-		return
-	_request("%s%s/unlockCharacter?userId=%s" % [api_base, API, user_id], HTTPClient.METHOD_POST,
-		{"characterName": character_name, "cost": cost}, done)
+	_request("%s%s/v2/save" % [api_base, API], HTTPClient.METHOD_PUT, {"save": save, "rev": rev}, done)
 
 func _request(url: String, method: int, body, done := Callable()) -> void:
 	var http := HTTPRequest.new()

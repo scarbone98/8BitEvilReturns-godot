@@ -36,14 +36,22 @@ or submit scores.
 | `minute=N` | start at minute N (waves, HP scaling) |
 | `speed=N` | `Engine.time_scale` |
 | `levelup` / `chest` / `die` | open that screen right away |
+| `unlockall` | everything unlocked, nothing saved |
+| `horde=N` / `bench` | spawn N enemies / time the simulation for 400 frames |
+| `real` | with `autoplay`: save the run like a normal one |
+| `stage=crimson_crypt` | which stage |
+
+Every weapon, evolution and union: `python3 tools/test_weapons.py`
 
 Balance check: `godot4 --headless --path . -- --autoplay --speed=8 --char=joe`
 
 ## Layout
 
 ```
-src/autoload/db.gd      ALL content: weapons, passives, evolutions, heroes, enemies, stages
-src/autoload/meta.gd    saved profile: silver, unlocked heroes, best time
+src/data/*.gd           ALL content: weapons (+evolutions, unions), passives, heroes,
+                        enemies, stages, feats, power-ups, sprite sheets
+src/autoload/db.gd      gathers src/data into Db.WEAPONS etc, plus lookups
+src/autoload/meta.gd    saved profile: silver, unlocks, feats, power-ups, totals
 src/autoload/bridge.gd  Scareathon arcade page + API (same protocol as the Unity build)
 src/main.gd             title → hero select → run
 src/run/run.gd          one run: loop, wave spawner, drops, level-up/chest/pause/death screens

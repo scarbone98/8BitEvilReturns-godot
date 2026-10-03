@@ -1,0 +1,60 @@
+extends RefCounted
+## Sprite sheets: horizontal strips of equal frames.
+
+const SHEETS := {
+	# Characters
+	"run_joe": {"path": "run_joe", "frames": 4, "fps": 10},
+	"run_matt": {"path": "run_matt", "frames": 4, "fps": 10},
+	"run_alex": {"path": "run_alex", "frames": 4, "fps": 10},
+	"run_jon": {"path": "run_jon", "frames": 4, "fps": 10},
+	"idle_joe": {"path": "idle_joe", "frames": 6, "fps": 6},
+	"idle_matt": {"path": "idle_matt", "frames": 6, "fps": 6},
+	"idle_alex": {"path": "idle_alex", "frames": 6, "fps": 6},
+	"idle_jon": {"path": "idle_jon", "frames": 5, "fps": 6},
+	# Enemies
+	"zombie": {"path": "zombie", "frames": 6, "fps": 8},
+	"skull": {"path": "skull_enemy", "frames": 6, "fps": 10},
+	"ghost": {"path": "ghost", "frames": 6, "fps": 8},
+	"pumpkin": {"path": "pumpkin", "frames": 6, "fps": 10},
+	"werewolf": {"path": "werewolf", "frames": 7, "fps": 12},
+	"scarecrow": {"path": "scarecrow", "frames": 6, "fps": 6},
+	"swampthing": {"path": "swampthing", "frames": 6, "fps": 6},
+	"shadowbeast": {"path": "shadowbeast", "frames": 6, "fps": 8},
+	# Weapon effects
+	"fireball": {"path": "fireball", "frames": 7, "fps": 14},
+	"fireball_explosion": {"path": "fireball_explosion", "frames": 7, "fps": 20},
+	"lightning": {"path": "lightning", "frames": 9, "fps": 24},
+	"boomerang": {"path": "boomerang", "frames": 4, "fps": 16},
+	"bearclaw": {"path": "bearclaw", "frames": 11, "fps": 30},
+	"crossbow_bolt": {"path": "crossbow_bolt", "frames": 1, "fps": 1},
+	"cursed_sword": {"path": "cursed_sword", "frames": 6, "fps": 12},
+	"acid_potion": {"path": "acid_potion", "frames": 4, "fps": 12},
+	"acid_pool": {"path": "acid_pool", "frames": 6, "fps": 8},
+	"bat": {"path": "bat", "frames": 4, "fps": 12},
+	"wisp": {"path": "willOWisp", "frames": 6, "fps": 10},
+	# Pickups
+	"candy_corn": {"path": "candy_corn", "frames": 6, "fps": 8},
+	"candy_bar": {"path": "candy_bar", "frames": 5, "fps": 8},
+	"candy_bubblegum": {"path": "candy_bubblegum", "frames": 6, "fps": 8},
+	"silver": {"path": "silver", "frames": 6, "fps": 10},
+	"heart_pump": {"path": "heart_pump", "frames": 5, "fps": 8},
+	# Animated passive icons (64x64 frames)
+	"magic_tome": {"path": "magic_tome", "frames": 13, "fps": 10},
+	"onion": {"path": "onion", "frames": 13, "fps": 10},
+	"tentacle": {"path": "tentacle", "frames": 12, "fps": 10},
+	"heartbeat": {"path": "heartbeat", "frames": 8, "fps": 10},
+	"snail_lord": {"path": "snailLord", "frames": 13, "fps": 10},
+	"vacusuck": {"path": "vacusuck", "frames": 5, "fps": 8},
+	"holy_cross": {"path": "holy_cross", "frames": 10, "fps": 10},
+	"merchant": {"path": "merchant_body", "frames": 5, "fps": 6},
+	"street_lamp": {"path": "street_lamp", "frames": 4, "fps": 6},
+	"hand": {"path": "hand", "frames": 4, "fps": 12},
+	"merchant_hat": {"path": "merchant_hat", "frames": 1, "fps": 1},
+	"tree_owl": {"path": "tree_owl", "frames": 5, "fps": 6},
+	"sparkle": {"path": "sparkle", "frames": 1, "fps": 1},
+	# Single-image projectiles
+	"skull_icon": {"path": "skull", "frames": 1, "fps": 1},
+	"blood_drop": {"path": "blood", "frames": 1, "fps": 1},
+	"wood_stake": {"path": "wood_particle", "frames": 1, "fps": 1},
+	"crosshair": {"path": "crosshair_new", "frames": 1, "fps": 1},
+}

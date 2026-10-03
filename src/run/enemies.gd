@@ -54,7 +54,7 @@ func count() -> int:
 
 func spawn(k: String, at: Vector2, hp_mul := 1.0, is_boss := false) -> void:
 	var d: Dictionary = Db.ENEMIES[k]
-	var s := 3.0 if is_boss else 1.0
+	var s := 2.0 if is_boss else 1.0
 	kind.append(k)
 	pos.append(at)
 	knock.append(Vector2.ZERO)
@@ -164,6 +164,19 @@ func nearest(to: Vector2, max_dist := 1e9) -> int:
 	var best_d := max_dist * max_dist
 	for i in pos.size():
 		if hp[i] <= 0.0:
+			continue
+		var d := to.distance_squared_to(pos[i])
+		if d < best_d:
+			best_d = d
+			best = i
+	return best
+
+## Nearest living enemy within max_dist whose uid isn't in `skip`.
+func nearest_excluding(to: Vector2, max_dist: float, skip: Dictionary) -> int:
+	var best := -1
+	var best_d := max_dist * max_dist
+	for i in query_circle(to, max_dist):
+		if skip.has(uid[i]):
 			continue
 		var d := to.distance_squared_to(pos[i])
 		if d < best_d:

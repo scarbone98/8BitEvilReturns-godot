@@ -29,6 +29,14 @@ var time := 0.0
 var kills := 0
 var candy := 0
 var silver_found := 0
+var stage_id := "graveyard"
+var chests := 0
+var bosses := 0
+var evolutions := 0
+var unions := 0
+var weapons_full := 0
+var kind_kills := {}
+var made: Array = []  # evolutions/unions made this run
 var ended := false
 var _spawn_acc: Array[float] = []
 var _events_done := {}
@@ -41,13 +49,15 @@ var _bench := 0  # frames left to time; dev flag "bench"
 var _bench_us := []
 var _prof := [0, 0, 0]
 
-func start(char_id: String, stage_id := "graveyard") -> void:
+func start(char_id: String, p_stage := "graveyard") -> void:
+	stage_id = p_stage
 	stage = Db.STAGES[stage_id]
 	_spawn_acc.resize(stage.spawns.size())
 	_spawn_acc.fill(0.0)
 
 	ground = Sprite2D.new()
 	ground.texture = Db.tex(stage.ground)
+	ground.modulate = stage.get("tint", Color.WHITE)
 	ground.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	ground.region_enabled = true
 	ground.region_rect = Rect2(0, 0, 640 * 3, 400 * 4)
@@ -60,7 +70,7 @@ func start(char_id: String, stage_id := "graveyard") -> void:
 	enemies = _make(EnemiesScript)
 	enemies.died.connect(_on_enemy_died)
 	player = _make(PlayerScript)
-	player.setup(char_id)
+	player.setup(char_id, {} if dev else Meta.powerup_stats())
 	player.add_weapon(Db.CHARACTERS[char_id].weapon)
 	player.leveled_up.connect(_on_level_up)
 	player.died.connect(_on_player_died)
@@ -91,7 +101,7 @@ func start(char_id: String, stage_id := "graveyard") -> void:
 ## Dev/testing: `give` adds weapons or passives (comma list, repeat an id to
 ## level it), `minute` skips ahead, `autoplay` lets a bot play.
 func apply_dev_flags(f: Dictionary) -> void:
-	dev = true
+	dev = not f.has("real")  # `real`: a bot run that saves like a normal one (for testing)
 	dev_unlimited = f.has("horde")
 	autoplay = f.has("autoplay")
 	player.autopilot = autoplay
@@ -123,6 +133,11 @@ func _make(script: Script) -> Node:
 	n.set("run", self)
 	add_child(n)
 	return n
+
+## The screen area around a given hero (in co-op each has their own).
+func view_rect_for(p) -> Rect2:
+	var sz := get_viewport_rect().size
+	return Rect2(p.position - sz * 0.5, sz)
 
 func view_rect() -> Rect2:
 	var sz := get_viewport_rect().size
@@ -181,8 +196,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _spawn(delta: float) -> void:
 	var minute := time / 60.0
-	var hp_mul := 1.0 + minute * float(stage.hp_per_minute)
-	var ramp := 1.0 + minute * 0.15
+	var curse: float = player.stats.curse
+	var hp_mul := (1.0 + minute * float(stage.hp_per_minute)) * (1.0 + curse)
+	var ramp := (1.0 + minute * 0.15) * (1.0 + curse)
 	for i in stage.spawns.size():
 		var sp: Dictionary = stage.spawns[i]
 		if minute < sp.from or minute >= sp.to:
@@ -220,7 +236,9 @@ func _contact_damage() -> void:
 
 func _on_enemy_died(at: Vector2, kind: String, is_boss: bool) -> void:
 	kills += 1
+	kind_kills[kind] = kind_kills.get(kind, 0) + 1
 	if is_boss:
+		bosses += 1
 		pickups.drop("chest", at)
 		return
 	var tier: int = Db.ENEMIES[kind].candy
@@ -245,7 +263,7 @@ func collect(p: Dictionary) -> void:
 			candy += 1
 			player.add_xp(p.value)
 		"silver":
-			silver_found += 1
+			silver_found += 2
 		"heart":
 			player.heal(30.0)
 		"clock":
@@ -258,6 +276,7 @@ func collect(p: Dictionary) -> void:
 				if view.has_point(enemies.pos[i]) and enemies.boss[i] == 0:
 					enemies.hurt(i, 99999.0, player.position)
 		"chest":
+			chests += 1
 			_open_chest()
 
 # ---------------------------------------------------------------- Screens
@@ -352,16 +371,27 @@ func _open_chest() -> void:
 	var gained := []  # [id, text]
 	var ev: Array = player.evolvable()
 	if not ev.is_empty():
-		var into: String = player.evolve(ev.pick_random())
-		gained.append([into, "EVOLVED!"])
+		var pick: Array = ev.pick_random()
+		var into: String = player.evolve(pick)
+		made.append(into)
+		if pick[2] == "union":
+			unions += 1
+			gained.append([into, "UNION!"])
+		else:
+			evolutions += 1
+			gained.append([into, "EVOLVED!"])
 	else:
-		var n := 1 if randf() < 0.7 else (3 if randf() < 0.3 else 2)
+		# Luck makes the bigger chests likelier.
+		var luck: float = player.stats.luck
+		var n := 1 if randf() > 0.3 + luck * 0.3 else (3 if randf() < 0.3 + luck * 0.2 else 2)
 		for k in n:
 			var opts: Array = player.upgrade_options(1)
 			if opts.is_empty():
 				break
 			player.upgrade(opts[0])
 			gained.append([opts[0], "LV %d" % player.level_of(opts[0]) if player.level_of(opts[0]) > 0 else ""])
+	if autoplay:
+		print("[chest] ", ", ".join(gained.map(func(g): return "%s %s" % g)))
 	var box := _panel("TREASURE!")
 	for g in gained:
 		var d: Dictionary = Db.upgrade_def(g[0])
@@ -369,7 +399,7 @@ func _open_chest() -> void:
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
 		row.add_theme_constant_override("separation", 8)
 		row.add_child(UI.icon(Db.icon_texture(d.icon), 32))
-		var l := UI.label("%s  %s" % [d.name, g[1]], 8, UI.GOLD if g[1] == "EVOLVED!" else UI.PALE)
+		var l := UI.label("%s  %s" % [d.name, g[1]], 8, UI.GOLD if g[1].ends_with("!") else UI.PALE)
 		row.add_child(l)
 		box.add_child(row)
 	var ok := UI.button("OK", func():
@@ -380,6 +410,25 @@ func _open_chest() -> void:
 	ok.call_deferred("grab_focus")
 	if autoplay:
 		get_tree().create_timer(0.6, true).timeout.connect(func(): ok.emit_signal("pressed"))
+
+func _unlock_row(id: String) -> Control:
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 6)
+	var name := ""
+	var icon: Texture2D
+	if Db.CHARACTERS.has(id):
+		var c: Dictionary = Db.CHARACTERS[id]
+		name = c.name
+		row.add_child(SheetView.new(c.idle, Vector2(20, 20)))
+	elif Db.STAGES.has(id):
+		name = Db.STAGES[id].name
+	else:
+		var d: Dictionary = Db.upgrade_def(id)
+		name = d.name
+		row.add_child(UI.icon(Db.icon_texture(d.icon), 20))
+	row.add_child(UI.label("UNLOCKED " + name, 8, UI.PALE))
+	return row
 
 func _show_pause() -> void:
 	if _modal or ended:
@@ -411,28 +460,49 @@ func _log_status(tag: String) -> void:
 		player.level, player.hp, player.max_hp(), kills, enemies.count(), shots.list.size(),
 		pickups.list.size(), Engine.get_frames_per_second(), ", ".join(inv)])
 
+## A revival: clear the hero some room and carry on.
+func on_revive(p) -> void:
+	for i in enemies.query_circle(p.position, 80.0):
+		if enemies.boss[i] == 0:
+			enemies.hurt(i, 99999.0, p.position)
+		else:
+			enemies.knock[i] += (enemies.pos[i] - p.position).normalized() * 400.0
+	popups.add(p.position + Vector2(0, -20), 0)  # just a pop at the spot
+
+func summary() -> Dictionary:
+	var seconds := int(time)
+	var earned := int((silver_found + seconds / 10) * (1.0 + player.stats.greed) * (1.0 + stage.get("silver_bonus", 0.0)))
+	var seen := []
+	for id in player.weapons: seen.append(id)
+	for id in player.passives: seen.append(id)
+	return {"seconds": seconds, "kills": kills, "level": player.level, "chests": chests, "bosses": bosses,
+		"candy": candy, "healed": int(player.healed), "evolutions": evolutions, "unions": unions,
+		"weapons_full": weapons_full, "silver": earned, "distance": int(player.distance / 16.0),
+		"char": player.char_id, "kinds": kind_kills, "evolved": made, "seen": seen}
+
 func _on_player_died() -> void:
 	if ended:
 		return
 	ended = true
 	if autoplay:
 		_log_status("DIED")
-	var seconds := int(time)
-	var bonus := seconds / 20
-	var earned := int((silver_found + bonus) * (1.0 + player.stats.greed))
-	var best := false
+	var r := summary()
+	var result := {"best": false, "feats": [], "unlocks": []}
 	if not dev:
-		Meta.add_silver(earned)
-		best = Meta.record_run(seconds)
-		Bridge.submit_run(seconds, kills, candy)
-		Bridge.report_death(seconds)
+		result = Meta.finish_run(r)
+		if autoplay:
+			print("[result] ", result, " silver=", Meta.silver)
+		Bridge.report_death(r.seconds)
 	var box := _panel("YOU DIED", UI.RED)
-	box.add_child(UI.label(UI.time_text(seconds), 24, UI.PALE))
-	if best:
+	box.add_child(UI.label(UI.time_text(r.seconds), 24, UI.PALE))
+	if result.best:
 		box.add_child(UI.label("NEW BEST!", 8, UI.GOLD))
-	box.add_child(UI.label("Kills %d   Candy %d" % [kills, candy], 8, UI.DIM))
-	box.add_child(UI.label("Level %d" % player.level, 8, UI.DIM))
-	box.add_child(UI.label("+%d silver" % earned, 10, UI.GOLD))
+	box.add_child(UI.label("Kills %d   Candy %d   Lv %d" % [kills, candy, player.level], 8, UI.DIM))
+	box.add_child(UI.label("+%d silver" % r.silver, 10, UI.GOLD))
+	for f in result.feats:
+		box.add_child(UI.label("FEAT: " + Db.FEATS[f].name, 8, UI.GOLD))
+	for id in result.unlocks:
+		box.add_child(_unlock_row(id))
 	var again := UI.button("PLAY AGAIN", func():
 		get_tree().paused = false
 		quit_to_menu.emit())
