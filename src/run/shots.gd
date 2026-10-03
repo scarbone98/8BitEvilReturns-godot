@@ -92,7 +92,7 @@ func bounce(w: Weapon, dir: Vector2) -> void:
 		"radius": 6.0 * w.area()})
 
 func turret(w: Weapon, at: Vector2) -> void:
-	_add(w, "turret", {"pos": at, "life": w.duration(), "next_zap": 0.0})
+	_add(w, "turret", {"pos": run.obstacles.free_spot(at, 6.0), "life": w.duration(), "next_zap": 0.0})
 
 func zap(w: Weapon, points: PackedVector2Array) -> void:
 	_add(w, "zap", {"points": points, "life": 0.18})

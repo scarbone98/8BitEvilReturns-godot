@@ -18,6 +18,7 @@ var list: Array[Dictionary] = []
 var _candy_count := 0
 
 func drop_candy(at: Vector2, tier: int) -> void:
+	at = run.obstacles.free_spot(at, 5.0)
 	if _candy_count >= MAX_CANDY:
 		# Too much on the floor: fold it into an existing candy instead.
 		for p in list:
@@ -29,6 +30,8 @@ func drop_candy(at: Vector2, tier: int) -> void:
 	_candy_count += 1
 
 func drop(type: String, at: Vector2) -> void:
+	# Chests don't fly to you, so one inside a building would be lost.
+	at = run.obstacles.free_spot(at, 10.0 if type == "chest" else 5.0)
 	list.append({"type": type, "pos": at, "t": 0.0, "pull": false, "value": 0})
 
 func pull_all_candy() -> void:

@@ -122,7 +122,7 @@ func start(char_id: String, p_stage := "graveyard", coop := {}) -> void:
 	hud.run = self
 	hud.pause_pressed.connect(_show_pause)
 	root.add_child(hud)
-	obstacles.update_around(player.position)
+	obstacles.update_around(_hero_positions())
 
 	if mode != "solo":
 		netsync = NetSyncScript.new()
@@ -212,7 +212,7 @@ func apply_dev_flags(f: Dictionary) -> void:
 	if f.has("horde"):
 		# Stress test: fill the field with this many enemies right away.
 		for k in int(f.horde):
-			enemies.spawn(Db.ENEMIES.keys().pick_random(), player.position + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(60, 300))
+			enemies.spawn(Db.ENEMIES.keys().pick_random(), obstacles.free_spot(player.position + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(60, 300), 8.0))
 	if f.has("die"):
 		_game_over.call_deferred()
 	if f.has("levelup"):
@@ -256,6 +256,7 @@ func _process(delta: float) -> void:
 			print("[bench] enemies %d  median %.2fms  p95 %.2fms  max %.2fms" % [enemies.count(),
 				_bench_us[_bench_us.size() / 2] / 1000.0, _bench_us[int(_bench_us.size() * 0.95)] / 1000.0, _bench_us[-1] / 1000.0])
 			print("[bench] per frame: enemies %.2fms shots %.2fms pickups %.2fms" % [_prof[0] / 400000.0, _prof[1] / 400000.0, _prof[2] / 400000.0])
+			_log_status("bench")
 			get_tree().quit()
 		return
 	_tick(delta)
@@ -306,9 +307,12 @@ func _guest_tick(delta: float) -> void:
 	front.queue_redraw()
 	obstacles.queue_redraw()
 
+func _hero_positions() -> Array:
+	return heroes.values().map(func(h): return h.position)
+
 func _follow_camera() -> void:
 	camera.position = player.position
-	obstacles.update_around(player.position)
+	obstacles.update_around(_hero_positions())
 	# Snap the tiled ground to its tile size so it never runs out.
 	ground.position = (player.position / Vector2(640, 400)).floor() * Vector2(640, 400)
 
@@ -339,7 +343,7 @@ func _spawn(delta: float) -> void:
 		while _spawn_acc[i] >= 1.0:
 			_spawn_acc[i] -= 1.0
 			if enemies.count() < cap:
-				enemies.spawn(sp.enemy, _offscreen_point(), hp_mul)
+				enemies.spawn(sp.enemy, _offscreen_point(Db.ENEMIES[sp.enemy].radius), hp_mul)
 	for i in stage.events.size():
 		var ev: Dictionary = stage.events[i]
 		if _events_done.has(i) or minute < ev.at:
@@ -350,14 +354,22 @@ func _spawn(delta: float) -> void:
 				for h in living_heroes():
 					var r: float = h.view_size.length() * 0.55
 					for k in ev.count:
-						enemies.spawn(ev.enemy, h.position + Vector2.RIGHT.rotated(TAU * k / ev.count) * r, hp_mul)
+						var at: Vector2 = h.position + Vector2.RIGHT.rotated(TAU * k / ev.count) * r
+						enemies.spawn(ev.enemy, obstacles.free_spot(at, Db.ENEMIES[ev.enemy].radius), hp_mul)
 			"boss":
-				enemies.spawn(ev.enemy, _offscreen_point(), hp_mul, true)
+				enemies.spawn(ev.enemy, _offscreen_point(Db.ENEMIES[ev.enemy].radius * 2.0), hp_mul, true)
 
-func _offscreen_point() -> Vector2:
+## Just off a random hero's screen, never inside a grave, tree or building.
+func _offscreen_point(r := 8.0) -> Vector2:
 	var alive := living_heroes()
 	var h = alive.pick_random() if not alive.is_empty() else player
-	return h.position + Vector2.RIGHT.rotated(randf() * TAU) * (h.view_size.length() * 0.5 + 16.0)
+	var dist: float = h.view_size.length() * 0.5 + 16.0
+	var p := Vector2.ZERO
+	for attempt in 8:
+		p = h.position + Vector2.RIGHT.rotated(randf() * TAU) * dist
+		if obstacles.is_free(p, r):
+			return p
+	return obstacles.free_spot(p, r)
 
 func _contact_damage() -> void:
 	for h in living_heroes():
@@ -714,9 +726,17 @@ func _log_status(tag: String) -> void:
 	var inv := []
 	for id in player.weapons: inv.append("%s%d" % [id, player.weapons[id].level])
 	for id in player.passives: inv.append("%s%d" % [id, player.passives[id]])
-	print("[%s] %s %s lv%d hp%d/%d kills%d heroes%d enemies%d shots%d pickups%d fps%d | %s" % [tag, mode, UI.time_text(time),
+	# Anything sitting inside a grave, tree or building (should stay 0).
+	var stuck := 0
+	for i in enemies.count():
+		if enemies.hp[i] > 0.0 and enemies._kind_fly[enemies.kidx[i]] == 0 and not obstacles.is_free(enemies.pos[i], 0.0):
+			stuck += 1
+	for p in pickups.list:
+		if not obstacles.is_free(p.pos, 0.0):
+			stuck += 1
+	print("[%s] %s %s lv%d hp%d/%d kills%d heroes%d enemies%d shots%d pickups%d inside_props%d fps%d | %s" % [tag, mode, UI.time_text(time),
 		level, player.hp, player.max_hp(), team_kills(), heroes.size(), enemies.count(), shots.list.size(),
-		pickups.list.size(), Engine.get_frames_per_second(), ", ".join(inv)])
+		pickups.list.size(), stuck, Engine.get_frames_per_second(), ", ".join(inv)])
 
 ## A revival: clear the hero some room and carry on.
 func on_revive(h) -> void:
