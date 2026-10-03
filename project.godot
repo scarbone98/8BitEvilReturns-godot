@@ -15,11 +15,11 @@ Bridge="*res://src/autoload/bridge.gd"
 Net="*res://src/autoload/net.gd"
 
 [display]
-window/size/viewport_width=240
-window/size/viewport_height=400
+window/size/viewport_width=270
+window/size/viewport_height=480
 window/size/window_width_override=480
 window/size/window_height_override=852
-window/stretch/mode="viewport"
+window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=1
 

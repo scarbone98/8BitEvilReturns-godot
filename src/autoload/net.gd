@@ -30,10 +30,13 @@ var ws: WebSocketPeer
 var code := ""
 var slot := -1
 var token := ""
-var is_host := false
+var is_host := false          # this device runs the fight
+var is_leader := false        # this player runs the lobby (stage, START)
+var host_slot := 0            # which seat runs the fight (the server's own seat when it hosts)
 var players: Array = []        # [{slot, name, hero, away}]
 var stage := "graveyard"
 var in_game := false
+var starting := false          # the leader pressed start; waiting for the game to begin
 var reconnecting := false
 var _pending: Dictionary = {}  # first message to send once the socket opens
 var _was_open := false
@@ -62,6 +65,11 @@ func _url() -> String:
 func create(name: String, hero: String) -> void:
 	_open({"type": "create", "name": name, "hero": hero})
 
+## The Scareathon server's headless game copy taking the host seat of a room.
+func host_connect(room_code: String, host_token: String) -> void:
+	code = room_code
+	_open({"type": "host", "code": room_code, "token": host_token})
+
 func join(room_code: String, name: String, hero: String) -> void:
 	_open({"type": "join", "code": room_code, "name": name, "hero": hero})
 
@@ -85,6 +93,8 @@ func _reset() -> void:
 	slot = -1
 	token = ""
 	is_host = false
+	is_leader = false
+	host_slot = 0
 	players = []
 	in_game = false
 	reconnecting = false
@@ -148,6 +158,8 @@ func _give_up(reason: String) -> void:
 # ---------------------------------------------------------------- Saved session (rejoin after a reload)
 
 func _save_session() -> void:
+	if OS.has_feature("server"):
+		return
 	var f := FileAccess.open(session_path, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify({"code": code, "token": token, "host": is_host, "at": Time.get_unix_time_from_system()}))
@@ -242,8 +254,11 @@ func _on_text(text: String) -> void:
 			slot = int(m.slot)
 			token = str(m.get("token", token))
 			is_host = bool(m.host)
+			is_leader = bool(m.get("leader", m.host))
+			host_slot = int(m.get("host_slot", 0))
 			players = m.players
 			stage = str(m.get("stage", "graveyard"))
+			starting = bool(m.get("starting", false))
 			_save_session()
 			if reconnecting:
 				reconnecting = false
@@ -256,8 +271,13 @@ func _on_text(text: String) -> void:
 				started.emit(stage, players)
 		"start":
 			in_game = true
+			starting = false
 			stage = str(m.stage)
 			players = m.players
+			# Who runs the fight: the server's game copy, or (if it couldn't
+			# start one) the player who made the room.
+			host_slot = int(m.get("host", 0))
+			is_host = slot == host_slot
 			started.emit(stage, players)
 		"left":
 			left.emit(int(m.slot))

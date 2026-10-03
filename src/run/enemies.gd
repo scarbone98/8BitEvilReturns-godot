@@ -95,7 +95,12 @@ func hurt(i: int, amount: float, from: Vector2, knockback := 0.0, attacker := -1
 	flash[i] = 0.12
 	run.popups.add(pos[i] + Vector2(0, -8 * scale_[i]), amount)
 	if knockback > 0.0 and boss[i] == 0:
-		knock[i] += (pos[i] - from).normalized() * knockback * 6.0
+		# A nudge, not a launch: hits don't stack (the stronger push wins) and
+		# big monsters barely budge.
+		var weight := clampf(radius[i] / 6.0, 1.0, 3.0)
+		var push := knockback * 1.5 / weight
+		if push > knock[i].length():
+			knock[i] = (pos[i] - from).normalized() * push
 	if hp[i] <= 0.0:
 		# Removed in the next step() so indices stay valid while weapons loop.
 		died.emit(pos[i], kind[i], boss[i] == 1, attacker)
@@ -267,55 +272,33 @@ func step(delta: float, targets: PackedVector2Array, view: Rect2) -> void:
 	queue_redraw()
 
 # ---------------------------------------------------------------- Guests
-# On a guest nothing is simulated: each snapshot replaces the enemy list and
-# positions glide from where they were drawn to where the host says they are.
-
-var _from := PackedVector2Array()
-var _to := PackedVector2Array()
-var _mirror_t := 0.0
-const MIRROR_STEP := 1.0 / 15.0
+# On a guest nothing is simulated: NetSync hands over the already-smoothed
+# enemy list every frame.
 
 ## entries: [uid, kind index, flags (1 boss, 2 hurt, 4 frozen), position, hp fraction]
-func mirror_apply(entries: Array) -> void:
-	var old := {}
+func mirror_set(entries: Array, delta: float) -> void:
+	var old_anim := {}
 	for i in uid.size():
-		old[uid[i]] = i
+		old_anim[uid[i]] = anim[i]
 	var n := entries.size()
-	var npos := PackedVector2Array(); npos.resize(n)
-	var nfrom := PackedVector2Array(); nfrom.resize(n)
-	var nanim := PackedFloat32Array(); nanim.resize(n)
+	pos.resize(n); anim.resize(n); uid.resize(n); kidx.resize(n); scale_.resize(n)
+	flash.resize(n); boss.resize(n); hp.resize(n); max_hp.resize(n); radius.resize(n); knock.resize(n)
 	kind.clear()
-	uid.resize(n); kidx.resize(n); scale_.resize(n); flash.resize(n); boss.resize(n)
-	hp.resize(n); max_hp.resize(n); radius.resize(n); knock.resize(n)
-	for e_i in n:
-		var e: Array = entries[e_i]
-		var u: int = e[0]
+	for i in n:
+		var e: Array = entries[i]
 		var k: int = e[1]
-		var was = old.get(u)
-		nfrom[e_i] = pos[was] if was != null else e[3]
-		npos[e_i] = e[3]
-		nanim[e_i] = anim[was] if was != null else randf()
-		uid[e_i] = u
-		kidx[e_i] = k
+		uid[i] = e[0]
+		kidx[i] = k
 		kind.append(_kinds[k])
-		boss[e_i] = 1 if e[2] & 1 else 0
-		scale_[e_i] = 2.0 if e[2] & 1 else 1.0
-		flash[e_i] = 0.1 if e[2] & 2 else 0.0
-		radius[e_i] = Db.ENEMIES[_kinds[k]].radius * scale_[e_i]
-		hp[e_i] = e[4]
-		max_hp[e_i] = 1.0
-	_from = nfrom
-	_to = npos
-	pos = nfrom.duplicate()
-	anim = nanim
-	_mirror_t = 0.0
-
-func mirror_step(delta: float) -> void:
-	_mirror_t += delta
-	var k := clampf(_mirror_t / MIRROR_STEP, 0.0, 1.0)
-	for i in pos.size():
-		pos[i] = _from[i].lerp(_to[i], k)
-		anim[i] += delta
+		pos[i] = e[3]
+		anim[i] = old_anim.get(e[0], randf()) + delta
+		boss[i] = 1 if e[2] & 1 else 0
+		scale_[i] = 2.0 if e[2] & 1 else 1.0
+		flash[i] = 0.1 if e[2] & 2 else 0.0
+		radius[i] = Db.ENEMIES[_kinds[k]].radius * scale_[i]
+		hp[i] = e[4]
+		max_hp[i] = 1.0
+	frozen = 1.0 if n > 0 and entries[0][2] & 4 else 0.0
 	queue_redraw()
 
 func _draw() -> void:

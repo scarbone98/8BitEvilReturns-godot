@@ -6,6 +6,8 @@ extends Node2D
 ##      "host"  - co-op: this game runs the fight for every hero and streams
 ##                it to the others (see NetSync)
 ##      "guest" - co-op: draws the host's fight and moves only its own hero
+##      "server" - co-op run by the Scareathon server: a host with no hero of
+##                its own; every player is a guest. Started headless.
 ## Experience and level are shared by the team; every hero picks their own
 ## level-up card. A hero who goes down comes back at the next team level-up;
 ## the run ends when everyone is down.
@@ -34,6 +36,7 @@ var popups
 var netsync
 var camera: Camera2D
 var ground: Sprite2D
+var ground_fx: Node2D
 var world: Node2D  # y-sorted: heroes and props, so each sorts by where its feet are
 var front: Node2D  # redraws enemies standing in front of a prop
 var hud
@@ -50,6 +53,7 @@ var _pending_levels := 0
 var _awaiting := {}  # host: seats still choosing a level-up card
 var _sent_opts := {} # host: the cards each remote seat was offered
 var net_paused := false  # host: our own connection dropped, so the fight waits
+var _log_clock := 0.0  # guests: the bot's status log (the run clock follows the host's)
 var _modal: Control
 var autoplay := false
 var dev := false  # dev/test runs never save
@@ -62,7 +66,14 @@ func is_guest() -> bool:
 	return mode == "guest"
 
 func is_host() -> bool:
-	return mode == "host"
+	return mode == "host" or mode == "server"
+
+func is_server() -> bool:
+	return mode == "server"
+
+## A hero played on this device (never true on the server).
+func _is_local(h) -> bool:
+	return h != null and h.mode == "local"
 
 ## coop: {} for solo, or {mode: "host"|"guest", players: [{slot, name, hero}]}.
 func start(char_id: String, p_stage := "graveyard", coop := {}) -> void:
@@ -84,6 +95,8 @@ func start(char_id: String, p_stage := "graveyard", coop := {}) -> void:
 	obstacles = _make(ObstaclesScript)
 	obstacles.setup(stage)
 	pickups = _make(PickupsScript)
+	ground_fx = Node2D.new()  # pools and auras, under the monsters
+	add_child(ground_fx)
 	enemies = _make(EnemiesScript)
 	enemies.died.connect(_on_enemy_died)
 	world = Node2D.new()
@@ -97,16 +110,17 @@ func start(char_id: String, p_stage := "graveyard", coop := {}) -> void:
 	else:
 		for p in coop.players:
 			var seat := int(p.slot)
-			var me := seat == Net.slot
+			var me := seat == Net.slot and not is_server()
 			var hero_mode := "local" if me else ("remote" if is_host() else "puppet")
 			var hero = _add_hero(seat, char_id if me else str(p.hero), hero_mode, str(p.name))
 			hero.position = Vector2(seat * 24 - 36, 0)
-			if me:
-				player = hero
+			if me or (is_server() and player == null):
+				player = hero  # on the server: just a reference hero, not played
 	front = Node2D.new()
 	front.draw.connect(func(): enemies.draw_in_front_of_props(front))
 	add_child(front)
 	shots = _make(ShotsScript)
+	ground_fx.draw.connect(func(): shots.draw_ground(ground_fx))
 	popups.set("run", self)
 	add_child(popups)
 
@@ -185,9 +199,14 @@ func on_connection(online: bool) -> void:
 func remove_hero(seat: int) -> void:
 	print("[net] seat %d left for good" % seat)
 	var h = heroes.get(seat)
-	if h == null or h == player:
+	if h == null or _is_local(h):
 		return
 	heroes.erase(seat)
+	if h == player:
+		player = heroes.values()[0] if not heroes.is_empty() else null
+		if player == null:
+			_game_over()
+			return
 	# Their bats, swords and pools go with them.
 	shots.list = shots.list.filter(func(sh): return sh.w.player != h)
 	h.queue_free()
@@ -312,22 +331,22 @@ func _tick(delta: float) -> void:
 	if autoplay and int(time / 30.0) != int((time - delta) / 30.0):
 		_log_status("t")
 	front.queue_redraw()
-	obstacles.queue_redraw()
+	ground_fx.queue_redraw()
 
 ## Guests: move our own hero, glide everything else toward the last snapshot.
 func _guest_tick(delta: float) -> void:
-	var before := time
 	time += delta
-	if autoplay and int(time / 30.0) != int(before / 30.0):
+	_log_clock += delta
+	if autoplay and _log_clock >= 30.0:
+		_log_clock -= 30.0
 		_log_status("t")
 	for h in heroes.values():
 		h.step(delta, false)
 	_follow_camera()
-	enemies.mirror_step(delta)
 	popups.step(delta)
 	shots.queue_redraw()
 	front.queue_redraw()
-	obstacles.queue_redraw()
+	ground_fx.queue_redraw()
 
 func _hero_positions() -> Array:
 	return heroes.values().map(func(h): return h.position)
@@ -457,12 +476,17 @@ func collect(p: Dictionary, h) -> void:
 
 func add_xp(amount: float) -> void:
 	xp += amount
-	while xp >= xp_next:
-		xp -= xp_next
+	while xp >= xp_next * _xp_scale():
+		xp -= xp_next * _xp_scale()
 		level += 1
-		# Vampire Survivors-style curve: +10 per level, steeper after 20.
-		xp_next += 10.0 if level < 20 else 13.0
+		# Vampire Survivors-style curve: +10 per level, steeper after 20 and 40.
+		xp_next += 10.0 if level < 20 else (13.0 if level < 40 else 16.0)
 		_on_level_up()
+
+## Co-op shares one XP bar between more players fighting more monsters, so
+## each level needs more.
+func _xp_scale() -> float:
+	return 1.0 + 0.5 * (heroes.size() - 1)
 
 # ---------------------------------------------------------------- Screens
 
@@ -505,14 +529,19 @@ func _next_level_up() -> void:
 		if not heroes[seat].dead and not heroes[seat].away:
 			_awaiting[seat] = true
 	if _awaiting.is_empty():
+		if is_server():
+			_pending_levels = 0  # nobody can choose: carry on
+			return
 		_awaiting[player.slot] = true
 	for seat in _awaiting:
 		var h = heroes[seat]
-		if h == player:
+		if _is_local(h):
 			continue
 		_sent_opts[seat] = h.upgrade_options(3)
 		netsync.send_levelup(seat, _sent_opts[seat], level)
-	if _awaiting.has(player.slot):
+	if is_server():
+		get_tree().paused = true  # the fight waits for everyone's card
+	elif _awaiting.has(player.slot):
 		show_level_up(player.upgrade_options(3), func(id): _picked(player.slot, id))
 	else:
 		_show_waiting()
@@ -525,7 +554,7 @@ func _picked(seat: int, id: String) -> void:
 	if h and id != "" and (Db.upgrade_def(id).size() > 0):
 		h.upgrade(id)
 	_awaiting.erase(seat)
-	if seat == player.slot and not _awaiting.is_empty():
+	if _is_local(h) and not _awaiting.is_empty():
 		_show_waiting()
 	_check_picks_done()
 
@@ -650,7 +679,7 @@ func _open_chest(h) -> void:
 			gained.append([opts[0], "LV %d" % h.level_of(opts[0]) if h.level_of(opts[0]) > 0 else ""])
 	if autoplay:
 		print("[chest] ", ", ".join(gained.map(func(g): return "%s %s" % g)))
-	if h != player:
+	if not _is_local(h):
 		netsync.send_chest(h.slot, gained)
 		return
 	if mode != "solo":
@@ -745,6 +774,16 @@ func _show_coop_menu() -> void:
 	back.call_deferred("grab_focus")
 
 func _log_status(tag: String) -> void:
+	# Co-op: every hero's inventory as this device sees it, to compare host and guests.
+	if mode != "solo":
+		for seat in heroes:
+			var h = heroes[seat]
+			if mode == "host" or h == player:
+				var items := []
+				for id in h.weapons: items.append("%s%d" % [id, h.weapons[id].level])
+				for id in h.passives: items.append("%s%d" % [id, h.passives[id]])
+				items.sort()
+				print("[inv %s seat%d %s] %s" % [mode, seat, h.char_id, ",".join(items)])
 	var inv := []
 	for id in player.weapons: inv.append("%s%d" % [id, player.weapons[id].level])
 	for id in player.passives: inv.append("%s%d" % [id, player.passives[id]])
@@ -788,7 +827,7 @@ func _on_hero_down(h) -> void:
 		return
 	if living_heroes().is_empty():
 		_game_over()
-	elif h == player:
+	elif _is_local(h):
 		hud.toast("You're down! Back at the next level up.", UI.RED)
 	else:
 		netsync.send_toast(h.slot, "You're down! Back at the next level up.")
@@ -802,8 +841,12 @@ func _game_over() -> void:
 		_log_status("DIED")
 	if is_host():
 		for seat in heroes:
-			if heroes[seat] != player:
+			if not _is_local(heroes[seat]):
 				netsync.send_over(seat, summary_for(heroes[seat]))
+	if is_server():
+		print("[server] game over at ", UI.time_text(time))
+		get_tree().create_timer(5.0, true).timeout.connect(get_tree().quit)
+		return
 	show_results(summary_for(player))
 
 ## Results for this device's hero; saves the run to the profile.
@@ -834,6 +877,10 @@ func show_results(r: Dictionary) -> void:
 
 ## Guests: the host left or the connection dropped.
 func connection_lost(reason: String) -> void:
+	if is_server():
+		print("[server] room closed (%s), exiting" % reason)
+		get_tree().quit()
+		return
 	if ended:
 		return
 	ended = true

@@ -86,9 +86,16 @@ src/ui/                 HUD, theme (original GUI_border art), SheetView
 ## Co-op
 
 Up to 4 players, each on their own device, join a room by code (CO-OP on
-the title screen). The host's game runs the whole fight and streams each
-guest a snapshot of what they can see, ~15 times a second; guests move
-their own hero locally and send its position back. Team XP and level are
+the title screen). One copy of the game runs the whole fight and streams
+each player a snapshot of what they can see, 20 times a second; players
+move their own hero locally and send its position back, and draw the world
+0.1s behind the newest snapshot so it stays smooth.
+
+That copy is normally a headless one the Scareathon server starts for the
+room (the "Linux Server" export, published as the latest GitHub release
+asset `8ber-server.x86_64` by `tools/publish_server.sh`, which
+`tools/publish_pages.sh` runs too). If the server can't start one, the
+player who made the room hosts it on their device instead. Team XP and level are
 shared, everyone picks their own level-up card, and downed heroes come
 back at the next team level-up. The Scareathon server only keeps the lobby
 and relays packets (`/8bitevilreturns/v2/ws`, see

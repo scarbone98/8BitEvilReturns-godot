@@ -16,9 +16,13 @@ const K_ENEMY := 69  # E
 const K_SHOTS := 88  # X
 const K_INPUT := 73  # I
 const K_JSON := 74   # J
-const SNAP_EVERY := 1.0 / 15.0
+const SNAP_EVERY := 1.0 / 20.0
+const RENDER_DELAY := 0.1  # guests draw this far behind the newest snapshot, to blend smoothly
 const INPUT_EVERY := 1.0 / 20.0
 const CHUNK_BYTES := 7000  # the server refuses packets over 8 KB
+# Bump when the snapshot format or messages change, so a player on an old page
+# (or an old server copy) is told to reload instead of seeing garbage.
+const PROTOCOL := 3
 
 var run
 var _clock := 0.0
@@ -27,11 +31,14 @@ var _inv_sent := {}  # seat -> inv_rev last sent
 var _sheet_ids: Array = []
 var _sheet_index := {}
 var _char_ids: Array = []
-# Guest: the frame being assembled
+# Guest: snapshots are buffered with the host's game time and drawn a little
+# behind, blending between the two either side, so uneven packet arrival
+# doesn't show as stutter.
 var _frame_seq := -1
-var _frame_enemies: Array = []
-var _frame_ops: Array = []
-var _frame_pickups: Array = []
+var _building := {}   # the snapshot being assembled from its S/E/X packets
+var _frames: Array = []  # complete snapshots, oldest first: {t, heroes, enemies, ops, pickups}
+var _render_t := -1.0
+var _newest_ms := 0
 
 func _ready() -> void:
 	_sheet_ids = Db.SHEETS.keys()
@@ -60,7 +67,7 @@ func _ready() -> void:
 		for id in Db.WEAPONS.keys() + Db.PASSIVES.keys():
 			if Meta.content_unlocked(id):
 				unlocked.append(id)
-		Net.send_json(0, {"t": "hello", "powerups": {} if run.dev else Meta.powerup_stats(),
+		Net.send_json(0, {"t": "hello", "proto": PROTOCOL, "powerups": {} if run.dev else Meta.powerup_stats(),
 			"unlocked": unlocked, "view": [run.player.view_size.x, run.player.view_size.y]})
 
 func _process(delta: float) -> void:
@@ -69,9 +76,11 @@ func _process(delta: float) -> void:
 		if _clock >= SNAP_EVERY:
 			_clock = 0.0
 			_send_snapshots()
-	elif _clock >= INPUT_EVERY:
+		return
+	if _clock >= INPUT_EVERY:
 		_clock = 0.0
 		_send_input()
+	_interpolate(delta)
 
 # ---------------------------------------------------------------- Host
 
@@ -94,7 +103,7 @@ func _send_snapshots() -> void:
 	_seq = (_seq + 1) & 0xFFFF
 	for seat in run.heroes:
 		var h = run.heroes[seat]
-		if h == run.player:
+		if h.mode == "local":
 			continue
 		if _inv_sent.get(seat, -1) != h.inv_rev:
 			_inv_sent[seat] = h.inv_rev
@@ -109,7 +118,7 @@ func _send_snapshot_to(seat: int, h) -> void:
 	b.put_u16(_seq)
 	b.put_float(run.time)
 	b.put_u16(run.level)
-	b.put_u8(int(clampf(run.xp / run.xp_next, 0.0, 1.0) * 255))
+	b.put_u8(int(clampf(run.xp / (run.xp_next * run._xp_scale()), 0.0, 1.0) * 255))
 	b.put_float(h.hp)
 	b.put_float(h.max_hp())
 	b.put_u16(mini(h.kills, 65535))
@@ -202,9 +211,10 @@ func _put_color(b: StreamPeerBuffer, c: Color) -> void:
 	b.put_u8(c.a8)
 
 func _put_op(b: StreamPeerBuffer, op: Array, origin: Vector2) -> void:
-	b.put_u8(op[0])
-	match op[0]:
+	b.put_u8(op[0])  # type, with the ground flag
+	match int(op[0]) & 127:
 		0:  # sprite
+			b.put_u16(int(op[7]) & 0xFFFF if op.size() > 7 else 0)
 			b.put_u8(_sheet_index.get(op[1], 0))
 			b.put_u8(int(op[2]) & 0xFF)
 			_put_off(b, op[3], origin)
@@ -267,6 +277,8 @@ func _host_json(from: int, m: Dictionary) -> void:
 		return
 	match str(m.get("t")):
 		"hello":
+			if int(m.get("proto", 0)) != PROTOCOL:
+				Net.send_json(from, {"t": "outdated"})
 			# Their own power-ups and unlocks apply to their hero.
 			var bonus := {}
 			var p = m.get("powerups", {})
@@ -310,10 +322,11 @@ func _read_snapshot(data: PackedByteArray) -> void:
 	var b := StreamPeerBuffer.new()
 	b.data_array = data
 	_frame_seq = b.get_u16()
-	run.time = b.get_float()
+	var t := b.get_float()
+	run.time = t
 	run.level = b.get_u16()
 	run.xp_next = 1.0
-	run.xp = b.get_u8() / 255.0
+	run.xp = b.get_u8() / 255.0 * run._xp_scale()  # the HUD divides by the scale again
 	var me = run.player
 	me.hp = b.get_float()
 	me.max_hp_override = b.get_float()
@@ -321,36 +334,26 @@ func _read_snapshot(data: PackedByteArray) -> void:
 	me.silver_found = b.get_u16()
 	me.dead = b.get_u8() == 1
 	_origin = Vector2(b.get_float(), b.get_float())
+	var heroes := {}
 	var n := b.get_u8()
 	for k in n:
 		var seat := b.get_u8()
 		var pos := Vector2(b.get_float(), b.get_float())
 		var flags := b.get_u8()
 		var hp_frac := b.get_u8() / 255.0
-		var ci := b.get_u8()
-		var h = run.heroes.get(seat)
-		if h == null or h == me:
-			continue
-		h.position = pos
-		h.moving = flags & 1 != 0
-		h.facing = Vector2.LEFT if flags & 2 else Vector2.RIGHT
-		h.dead = flags & 4 != 0
-		h._hurt_flash = 0.1 if flags & 8 else 0.0
-		h._invuln = 0.1 if flags & 16 else 0.0
-		h.max_hp_override = 100.0
-		h.hp = hp_frac * 100.0
-	_frame_pickups = []
+		b.get_u8()  # hero index (the roster already says)
+		heroes[seat] = [pos, flags, hp_frac]
+	var pickups := []
 	var np := b.get_u16()
 	for k in np:
 		var code := b.get_u8()
-		_frame_pickups.append([code, _off(b, _origin)])
-	_frame_enemies = []
-	_frame_ops = []
+		pickups.append([code, _off(b, _origin)])
+	_building = {"t": t, "heroes": heroes, "pickups": pickups, "enemies": [], "ops": []}
 
 func _read_enemies(data: PackedByteArray) -> void:
 	var b := StreamPeerBuffer.new()
 	b.data_array = data
-	if b.get_u16() != _frame_seq:
+	if b.get_u16() != _frame_seq or _building.is_empty():
 		return
 	b.get_u8()
 	var n := b.get_u16()
@@ -360,42 +363,130 @@ func _read_enemies(data: PackedByteArray) -> void:
 		var f := b.get_u8()
 		var pos := _off(b, _origin)
 		var hp_frac := b.get_u8() / 255.0
-		_frame_enemies.append([u, ki, f, pos, hp_frac])
+		_building.enemies.append([u, ki, f, pos, hp_frac])
 
 func _read_shots(data: PackedByteArray) -> void:
 	var b := StreamPeerBuffer.new()
 	b.data_array = data
-	if b.get_u16() != _frame_seq:
+	if b.get_u16() != _frame_seq or _building.is_empty():
 		return
 	var last := b.get_u8() == 1
 	var n := b.get_u16()
+	var ops: Array = _building.ops
 	for k in n:
-		var op := b.get_u8()
+		var raw := b.get_u8()
+		var op := raw & 127
 		match op:
 			0:
+				var id := b.get_u16()
 				var sheet: String = _sheet_ids[mini(b.get_u8(), _sheet_ids.size() - 1)]
 				var frame := b.get_u8()
 				var pos := _off(b, _origin)
 				var rot := b.get_u8() / 256.0 * TAU
 				var sc := Vector2(b.get_8() / 16.0, b.get_u8() / 16.0)
-				_frame_ops.append([0, sheet, frame, pos, rot, sc, _get_color(b)])
+				ops.append([raw, sheet, frame, pos, rot, sc, _get_color(b), id])
 			1, 2, 5:
 				var pos := _off(b, _origin)
 				var r := b.get_u16() / 4.0
-				_frame_ops.append([op, pos, r, _get_color(b)])
+				ops.append([raw, pos, r, _get_color(b)])
 			3:
 				var m := b.get_u8()
 				var pts := PackedVector2Array()
 				for i in m:
 					pts.append(_off(b, _origin))
-				_frame_ops.append([3, pts, _get_color(b)])
+				ops.append([raw, pts, _get_color(b)])
 			4:
-				_frame_ops.append([4, b.get_u8() / 255.0])
+				ops.append([raw, b.get_u8() / 255.0])
 	if last:
-		run.enemies.mirror_apply(_frame_enemies)
-		run.pickups.mirror_apply(_frame_pickups)
-		run.shots.remote_ops = _frame_ops
-		run.shots.queue_redraw()
+		# A paused host keeps sending the same moment: replace rather than stack.
+		if not _frames.is_empty() and _frames[-1].t >= _building.t:
+			_frames[-1] = _building
+		else:
+			_frames.append(_building)
+		_newest_ms = Time.get_ticks_msec()
+		_building = {}
+		run.pickups.mirror_apply(_frames[-1].pickups)
+
+## Draws the world RENDER_DELAY behind the newest snapshot, blending between
+## the two snapshots either side of that moment.
+func _interpolate(delta: float) -> void:
+	if _frames.is_empty():
+		return
+	var newest: Dictionary = _frames[-1]
+	var since := minf((Time.get_ticks_msec() - _newest_ms) / 1000.0, 0.25)
+	var target: float = newest.t + since - RENDER_DELAY
+	if _render_t < 0.0 or absf(target - _render_t) > 0.5:
+		_render_t = target
+	else:
+		_render_t = lerpf(_render_t + delta, target, 0.1)
+	_render_t = minf(_render_t, newest.t)
+	while _frames.size() > 2 and _frames[1].t <= _render_t:
+		_frames.pop_front()
+	var a: Dictionary = _frames[0]
+	var bf: Dictionary = _frames[1] if _frames.size() > 1 else a
+	var k := 1.0 if bf.t <= a.t else clampf((_render_t - a.t) / (bf.t - a.t), 0.0, 1.0)
+	# Enemies
+	var prev := {}
+	for e in a.enemies:
+		prev[e[0]] = e
+	var list := []
+	for e in bf.enemies:
+		var p = prev.get(e[0])
+		list.append([e[0], e[1], e[2], p[3].lerp(e[3], k) if p != null else e[3], e[4]])
+	run.enemies.mirror_set(list, delta)
+	if run.autoplay:
+		_measure(list)
+	# Other heroes
+	for seat in bf.heroes:
+		var h = run.heroes.get(seat)
+		if h == null or h == run.player:
+			continue
+		var cur: Array = bf.heroes[seat]
+		var was = a.heroes.get(seat)
+		h.position = was[0].lerp(cur[0], k) if was != null else cur[0]
+		var flags: int = cur[1]
+		h.moving = flags & 1 != 0
+		h.facing = Vector2.LEFT if flags & 2 else Vector2.RIGHT
+		h.dead = flags & 4 != 0
+		h._hurt_flash = 0.1 if flags & 8 else 0.0
+		h._invuln = 0.1 if flags & 16 else 0.0
+		h.max_hp_override = 100.0
+		h.hp = cur[2] * 100.0
+	# Shots: sprites with an id glide between snapshots
+	var prev_ops := {}
+	for op in a.ops:
+		if op.size() > 7 and op[7] != 0:
+			prev_ops[op[7]] = op
+	var ops := []
+	for op in bf.ops:
+		if op.size() > 7 and op[7] != 0 and prev_ops.has(op[7]):
+			var p: Array = prev_ops[op[7]]
+			var o: Array = op.duplicate()
+			o[3] = p[3].lerp(op[3], k)
+			o[4] = lerp_angle(p[4], op[4], k)
+			ops.append(o)
+		else:
+			ops.append(op)
+	run.shots.remote_ops = ops
+	run.shots.queue_redraw()
+
+# Test bots: the biggest frame-to-frame jump of any enemy, reported every 10s.
+var _last_pos := {}
+var _max_jump := 0.0
+var _jump_clock := 0.0
+
+func _measure(list: Array) -> void:
+	var now := {}
+	for e in list:
+		now[e[0]] = e[3]
+		if _last_pos.has(e[0]):
+			_max_jump = maxf(_max_jump, (e[3] - _last_pos[e[0]]).length())
+	_last_pos = now
+	_jump_clock += get_process_delta_time()
+	if _jump_clock >= 10.0:
+		print("[smooth] biggest enemy jump between frames: %.1f px" % _max_jump)
+		_jump_clock = 0.0
+		_max_jump = 0.0
 
 func _get_color(b: StreamPeerBuffer) -> Color:
 	return Color8(b.get_u8(), b.get_u8(), b.get_u8(), b.get_u8())
@@ -415,6 +506,8 @@ func _guest_json(m: Dictionary) -> void:
 			run.show_chest_note(m.get("gained", []))
 		"toast":
 			run.hud.toast(str(m.get("text", "")), UI.RED)
+		"outdated":
+			run.hud.banner("A new version is out: reload the page")
 		"over":
 			var r: Dictionary = m.get("summary", {})
 			run.show_results(r)

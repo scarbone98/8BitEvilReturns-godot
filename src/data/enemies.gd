@@ -16,6 +16,6 @@ const ENEMIES := {
 # Candy is the experience pickup (the run reports "candyCollected").
 const CANDY := [
 	{"sheet": "candy_corn", "xp": 1.0},
-	{"sheet": "candy_bar", "xp": 5.0},
-	{"sheet": "candy_bubblegum", "xp": 20.0},
+	{"sheet": "candy_bar", "xp": 3.0},
+	{"sheet": "candy_bubblegum", "xp": 10.0},
 ]

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Builds the web export and publishes it to the gh-pages branch (GitHub Pages).
+# Builds the web export and publishes it to the gh-pages branch (GitHub Pages),
+# then publishes the matching Linux server program (tools/publish_server.sh) so
+# the Scareathon server's co-op hosts stay on the same version as players.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ./tools/build_web.sh
@@ -19,3 +21,4 @@ git worktree add --detach "$tmp" >/dev/null
 git worktree remove --force "$tmp"
 git branch -D gh-pages-new >/dev/null 2>&1 || true
 echo "published $rev"
+./tools/publish_server.sh

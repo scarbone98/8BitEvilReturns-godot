@@ -11,6 +11,7 @@ signal signed_in
 const API := "/8bitevilreturns"
 
 var user_id := ""
+var user_name := ""  # the Scareathon username, once signed in (shown in co-op)
 var access_token := ""
 var api_base := ""
 var _on_message: JavaScriptObject  # kept alive so JS can keep calling it
@@ -64,6 +65,7 @@ func _handle_message(args: Array) -> void:
 	access_token = str(data.accessToken)
 	api_base = str(data.apiBaseUrl).trim_suffix("/")
 	signed_in.emit()
+	_fetch_name()
 
 func _post_to_page(msg: Dictionary) -> void:
 	if not is_web():
@@ -82,6 +84,11 @@ func server_url() -> String:
 	if f.has("server"):
 		return str(f.server).trim_suffix("/")
 	return api_base if api_base != "" else DEFAULT_API
+
+func _fetch_name() -> void:
+	_request("%s/user" % api_base, HTTPClient.METHOD_GET, null, func(code, data):
+		if code == 200 and data is Dictionary and data.get("data") is Dictionary:
+			user_name = str(data.data.get("username", "")))
 
 func report_death(seconds: int) -> void:
 	_post_to_page({"type": "PLAYER_DIED", "score": seconds})

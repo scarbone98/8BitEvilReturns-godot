@@ -5,32 +5,37 @@ const RunScript := preload("res://src/run/run.gd")
 
 var _screen: Node
 
-const MIN_VIEW := Vector2(240, 400)  # the smallest view the game is laid out for
+# Like the original's camera: always 480 world pixels tall, as wide as the
+# screen's shape allows (but never under 240, so the menus fit).
+const VIEW_HEIGHT := 480.0
+const MIN_WIDTH := 240.0
 
 func _ready() -> void:
-	_fit_screen()
-	get_tree().root.size_changed.connect(_fit_screen)
+	_fit_view()
+	get_tree().root.size_changed.connect(_fit_view)
 	var f := Bridge.flags()
 	if f.has("speed"):
 		Engine.time_scale = float(f.speed)
 	if f.has("char") and Db.CHARACTERS.has(f.char):
 		Meta.selected = f.char
-	if f.has("coop"):
+	if f.get("coop") == "server":
+		_serve(f)
+	elif f.has("coop"):
 		_dev_coop(f)
 	elif f.has("autoplay") or f.has("dev"):
 		_start_run(true)
 	else:
 		show_title()
 
-## Pixel-perfect scaling that fills the screen: the largest whole-number zoom
-## that still shows at least MIN_VIEW, with the view sized to fill the rest.
-## (Godot's own "integer" mode leaves black bars below a 2x zoom.)
-func _fit_screen() -> void:
+func _fit_view() -> void:
 	var win := Vector2(get_tree().root.size)
-	if win.x <= 0 or win.y <= 0:
+	if win.x <= 0.0 or win.y <= 0.0:
 		return
-	var zoom := maxf(1.0, floorf(minf(win.x / MIN_VIEW.x, win.y / MIN_VIEW.y)))
-	get_tree().root.content_scale_size = Vector2i(floori(win.x / zoom), floori(win.y / zoom))
+	var aspect := win.x / win.y
+	var size := Vector2(VIEW_HEIGHT * aspect, VIEW_HEIGHT)
+	if size.x < MIN_WIDTH:
+		size = Vector2(MIN_WIDTH, MIN_WIDTH / aspect)
+	get_tree().root.content_scale_size = Vector2i(roundi(size.x), roundi(size.y))
 
 func _swap(n: Node) -> void:
 	if _screen:
@@ -369,8 +374,9 @@ func _unlock_hint(id: String) -> String:
 
 const CODE_KEYS := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
+## Signed in: your Scareathon username. Otherwise the hero you're playing.
 func _my_name() -> String:
-	return Db.CHARACTERS[Meta.selected].name
+	return Bridge.user_name if Bridge.user_name != "" else Db.CHARACTERS[Meta.selected].name
 
 func show_coop(error := "") -> void:
 	var box := _page("CO-OP")
@@ -458,7 +464,7 @@ func show_lobby() -> void:
 	box.add_child(stage_btn)
 	var start := UI.button("START", func(): Net.start_game(), 28)
 	box.add_child(start)
-	var wait := UI.label("Waiting for the host to start...", 8, UI.DIM)
+	var wait := UI.label("Waiting for the leader to start...", 8, UI.DIM)
 	box.add_child(wait)
 	box.add_child(UI.button("LEAVE", func():
 		Net.leave()
@@ -474,15 +480,37 @@ func show_lobby() -> void:
 			row.add_theme_constant_override("separation", 6)
 			var hid := str(p.hero) if Db.CHARACTERS.has(str(p.hero)) else "joe"
 			row.add_child(SheetView.new(Db.CHARACTERS[hid].idle, Vector2(28, 28)))
-			row.add_child(UI.label("%s%s" % [p.name, "  (host)" if int(p.slot) == 0 else ""], 8, UI.PALE, HORIZONTAL_ALIGNMENT_LEFT))
+			row.add_child(UI.label("%s%s" % [p.name, "  (leader)" if int(p.slot) == 0 else ""], 8, UI.PALE, HORIZONTAL_ALIGNMENT_LEFT))
 			list.add_child(row)
 		stage_l.text = "STAGE: " + Db.STAGES.get(Net.stage, Db.STAGES.graveyard).name
-		stage_btn.visible = Net.is_host
-		start.visible = Net.is_host
-		wait.visible = not Net.is_host and Net.code != ""
+		stage_btn.visible = Net.is_leader and not Net.starting
+		start.visible = Net.is_leader and not Net.starting
+		wait.visible = Net.starting or (not Net.is_leader and Net.code != "")
+		if Net.starting:
+			wait.text = "Starting the game server..."
 	refresh.call()
 	Net.room_changed.connect(refresh)
 	code_l.tree_exiting.connect(func(): Net.room_changed.disconnect(refresh))
+
+## Run by the Scareathon server: take the host seat of a room and run its
+## fight headless. Quits when the game ends or the room closes.
+func _serve(f: Dictionary) -> void:
+	print("[server] hosting room ", f.get("room", "?"))
+	Engine.max_fps = 30  # plenty for the simulation; snapshots go out 20 times a second
+	Net.failed.connect(func(msg):
+		print("[server] couldn't join: ", msg)
+		get_tree().quit(1))
+	Net.closed.connect(func(reason):
+		if not Net.in_game:
+			print("[server] room gone (%s)" % reason)
+			get_tree().quit())
+	Net.started.connect(func(stage, players):
+		var run := RunScript.new()
+		run.process_mode = Node.PROCESS_MODE_PAUSABLE
+		_swap(run)
+		run.start("joe", stage if Db.STAGES.has(stage) else "graveyard", {"mode": "server", "players": players})
+		print("[server] started with %d players" % players.size()))
+	Net.host_connect(str(f.get("room", "")), str(f.get("token", "")))
 
 func _start_coop(stage_id: String, players: Array) -> void:
 	# Play the hero the room has us down as (matters when rejoining after a reload).

@@ -5,14 +5,16 @@ extends Node2D
 
 var run
 var list: Array[Dictionary] = []
+var _next_id := 1  # every shot gets an id so guests can follow it between snapshots
 
 func _add(w: Weapon, type: String, extra: Dictionary) -> Dictionary:
 	var s := {
 		"w": w, "type": type, "pos": w.player.position, "vel": Vector2.ZERO, "t": 0.0,
 		"life": 1.0, "damage": w.damage(), "pierce": w.pierce(), "hits": {},
 		"rehit": -1.0, "radius": 6.0, "sheet": w.def.get("sheet", ""), "rot": 0.0,
-		"scale": w.area(), "tint": w.tint(), "delay": 0.0,
+		"scale": w.area(), "tint": w.tint(), "delay": 0.0, "id": _next_id,
 	}
+	_next_id = _next_id % 65535 + 1
 	s.merge(extra, true)
 	list.append(s)
 	return s
@@ -289,11 +291,12 @@ const OP_RING := 2
 const OP_ZAP := 3
 const OP_FLASH := 4
 const OP_PUDDLE := 5
+const GROUND := 128  # flag on an op's type: drawn on the ground, under the monsters
 
 var remote_ops: Array = []  # guests: the latest ops from the host
 
-func _sprite(out: Array, sheet: String, frame: int, center: Vector2, rot: float, sc: Vector2, col: Color) -> void:
-	out.append([OP_SPRITE, sheet, frame, center, rot, sc, col])
+func _sprite(out: Array, sheet: String, frame: int, center: Vector2, rot: float, sc: Vector2, col: Color, ground := false, id := 0) -> void:
+	out.append([OP_SPRITE | (GROUND if ground else 0), sheet, frame, center, rot, sc, col, id])
 
 ## Everything to draw inside `view`, as ops.
 func ops(view: Rect2) -> Array:
@@ -305,7 +308,7 @@ func ops(view: Rect2) -> Array:
 		var col: Color = s.tint
 		match s.type:
 			"aura":
-				out.append([OP_CIRCLE, s.pos, s.radius, Color(s.w.def.get("color", Color.WHITE), 0.45 + sin(s.t * 6.0) * 0.15)])
+				out.append([OP_CIRCLE | GROUND, s.pos, s.radius, Color(s.w.def.get("color", Color.WHITE), 0.45 + sin(s.t * 6.0) * 0.15)])
 				continue
 			"nova":
 				out.append([OP_RING, s.pos, s.radius, Color(s.w.def.get("color", Color.WHITE), 1.0 - s.t / s.life)])
@@ -332,45 +335,63 @@ func ops(view: Rect2) -> Array:
 				frame = mini(int(s.t / s.life * sh.frames), sh.frames - 1)
 				var step: float = s.hw
 				for j in [-0.5, 0.5]:
-					_sprite(out, s.sheet, frame, s.pos + Vector2(step * j, 0), 0.0, Vector2(sc * s.side, sc), col)
+					_sprite(out, s.sheet, frame, s.pos + Vector2(step * j, 0), 0.0, Vector2(sc * s.side, sc), col, false, s.id)
 			"fx":
 				# One-shot animations play through exactly once.
 				frame = mini(int(s.t / s.life * sh.frames), sh.frames - 1)
 				var center: Vector2 = s.pos
 				if s.get("anchor") == "bottom":
 					center += Vector2(0, -sh._h * sc * 0.5 + 6)
-				_sprite(out, s.sheet, frame, center, 0.0, Vector2(sc, sc), col)
+				_sprite(out, s.sheet, frame, center, 0.0, Vector2(sc, sc), col, false, s.id)
 			"warn":
 				var pulse: float = (1.0 + sin(s.t * 20.0) * 0.15) * 16.0 / sh._w
-				_sprite(out, s.sheet, frame, s.pos, 0.0, Vector2(pulse, pulse), Color(1, 1, 1, 0.9))
+				_sprite(out, s.sheet, frame, s.pos, 0.0, Vector2(pulse, pulse), Color(1, 1, 1, 0.9), false, s.id)
 			"pool":
 				col.a = clampf((s.life - s.t) * 2.0, 0.0, 0.85)
 				if s.sheet == "blood_drop":
-					out.append([OP_PUDDLE, s.pos, s.radius, col])
+					out.append([OP_PUDDLE | GROUND, s.pos, s.radius, col])
 				else:
 					var k: float = s.radius * 2.2 / sh._w
-					_sprite(out, s.sheet, frame, s.pos, 0.0, Vector2(k, k), col)
+					_sprite(out, s.sheet, frame, s.pos, 0.0, Vector2(k, k), col, true, s.id)
 			"turret":
 				col.a = clampf((s.life - s.t) * 2.0, 0.0, 1.0)
-				_sprite(out, s.sheet, frame, s.pos + Vector2(0, -sh._h * 0.5 + 4), 0.0, Vector2.ONE, col)
+				_sprite(out, s.sheet, frame, s.pos + Vector2(0, -sh._h * 0.5 + 4), 0.0, Vector2.ONE, col, false, s.id)
 			"bat", "wisp":
 				if s.rot != 0.0:
-					_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col)
+					_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col, false, s.id)
 				else:
-					_sprite(out, s.sheet, frame, s.pos, 0.0, Vector2(-sc if s.vel.x < 0 else sc, sc), col)
+					_sprite(out, s.sheet, frame, s.pos, 0.0, Vector2(-sc if s.vel.x < 0 else sc, sc), col, false, s.id)
 			"bullet":
-				_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col)
+				_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col, false, s.id)
 			_:
-				_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col)
+				_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col, false, s.id)
 	return out
 
-func _draw() -> void:
-	var view: Rect2 = run.view_rect()
-	exec_ops(remote_ops if run.is_guest() else ops(view), view)
+var _ops_cache: Array = []
+var _ops_frame := -1
 
-func exec_ops(list_ops: Array, view: Rect2) -> void:
+## This frame's ops (worked out once, shared by the ground and top layers).
+func frame_ops() -> Array:
+	if run.is_guest():
+		return remote_ops
+	var f := Engine.get_process_frames()
+	if f != _ops_frame:
+		_ops_frame = f
+		_ops_cache = ops(run.view_rect())
+	return _ops_cache
+
+func _draw() -> void:
+	exec_ops(self, frame_ops(), run.view_rect(), false)
+
+## Pools, puddles and auras: drawn by the run's ground layer, under the monsters.
+func draw_ground(ci: CanvasItem) -> void:
+	exec_ops(ci, frame_ops(), run.view_rect(), true)
+
+func exec_ops(ci: CanvasItem, list_ops: Array, view: Rect2, ground: bool) -> void:
 	for op in list_ops:
-		match op[0]:
+		if (int(op[0]) & GROUND != 0) != ground:
+			continue
+		match int(op[0]) & ~GROUND:
 			OP_SPRITE:
 				var sh := Db.sheet(op[1])
 				var src := Rect2(int(op[2]) % int(sh.frames) * sh._w, 0, sh._w, sh._h)
@@ -379,39 +400,39 @@ func exec_ops(list_ops: Array, view: Rect2) -> void:
 					# Unrotated and unflipped: draw straight.
 					var w: float = sh._w * sc.x
 					var h: float = sh._h * sc.y
-					draw_texture_rect_region(sh._tex, Rect2(op[3] - Vector2(w, h) * 0.5, Vector2(w, h)), src, op[6])
+					ci.draw_texture_rect_region(sh._tex, Rect2(op[3] - Vector2(w, h) * 0.5, Vector2(w, h)), src, op[6])
 				else:
 					# Rotated or mirrored (negative x scale) around its centre.
-					draw_set_transform(op[3], op[4], sc)
-					draw_texture_rect_region(sh._tex, Rect2(-sh._w * 0.5, -sh._h * 0.5, sh._w, sh._h), src, op[6])
-					draw_set_transform(Vector2.ZERO)
+					ci.draw_set_transform(op[3], op[4], sc)
+					ci.draw_texture_rect_region(sh._tex, Rect2(-sh._w * 0.5, -sh._h * 0.5, sh._w, sh._h), src, op[6])
+					ci.draw_set_transform(Vector2.ZERO)
 			OP_CIRCLE:
 				var c: Color = op[3]
-				draw_circle(op[1], op[2], Color(c, 0.13))
-				draw_arc(op[1], op[2], 0, TAU, 40, c, 1.0)
+				ci.draw_circle(op[1], op[2], Color(c, 0.13))
+				ci.draw_arc(op[1], op[2], 0, TAU, 40, c, 1.0)
 			OP_RING:
 				var c: Color = op[3]
-				draw_arc(op[1], maxf(op[2], 1.0), 0, TAU, 48, c, 3.0)
-				draw_arc(op[1], maxf(op[2] - 4.0, 1.0), 0, TAU, 48, Color(c, c.a * 0.4), 2.0)
+				ci.draw_arc(op[1], maxf(op[2], 1.0), 0, TAU, 48, c, 3.0)
+				ci.draw_arc(op[1], maxf(op[2] - 4.0, 1.0), 0, TAU, 48, Color(c, c.a * 0.4), 2.0)
 			OP_ZAP:
 				var pts: PackedVector2Array = op[1]
 				for k in range(1, pts.size()):
-					_jagged(pts[k - 1], pts[k], op[2])
+					_jagged(ci, pts[k - 1], pts[k], op[2])
 			OP_FLASH:
-				draw_rect(view, Color(1, 1, 0.85, op[1]))
+				ci.draw_rect(view, Color(1, 1, 0.85, op[1]))
 			OP_PUDDLE:
 				var col: Color = op[3]
 				var c := Color(0.55, 0.02, 0.06, col.a * 0.8) * Color(col.r, col.g, col.b, 1.0)
-				draw_circle(op[1], op[2], c)
-				draw_circle(op[1] + Vector2(-op[2] * 0.3, -op[2] * 0.3), op[2] * 0.35, Color(0.9, 0.2, 0.25, col.a * 0.5))
+				ci.draw_circle(op[1], op[2], c)
+				ci.draw_circle(op[1] + Vector2(-op[2] * 0.3, -op[2] * 0.3), op[2] * 0.35, Color(0.9, 0.2, 0.25, col.a * 0.5))
 
 ## A lightning-style line between two points.
-func _jagged(a: Vector2, b: Vector2, c: Color) -> void:
+func _jagged(ci: CanvasItem, a: Vector2, b: Vector2, c: Color) -> void:
 	var pts := PackedVector2Array([a])
 	var n := maxi(2, int(a.distance_to(b) / 10.0))
 	var side := (b - a).orthogonal().normalized()
 	for k in range(1, n):
 		pts.append(a.lerp(b, float(k) / n) + side * randf_range(-4, 4))
 	pts.append(b)
-	draw_polyline(pts, Color(c, c.a * 0.5), 3.0)
-	draw_polyline(pts, c, 1.0)
+	ci.draw_polyline(pts, Color(c, c.a * 0.5), 3.0)
+	ci.draw_polyline(pts, c, 1.0)
