@@ -88,6 +88,17 @@ func is_locked_content(id: String) -> bool:
 	return d.get("locked", false)
 
 ## Base weapons only (no evolutions or unions).
+## Weapons a co-op guest simulates itself so they fire the instant it does
+## (damage still comes from the host). Ones that pick random targets would
+## disagree with the host, so those stay host-drawn.
+const PREDICTED_BEHAVIORS := ["shooter", "slash", "boomerang", "orbit", "aura", "nova", "summon", "seeker", "trail", "chain"]
+
+func is_predicted(def: Dictionary) -> bool:
+	var b: String = def.get("behavior", "")
+	if b == "strike":
+		return def.get("target") == "nearest" and not def.has("warn")
+	return b in PREDICTED_BEHAVIORS
+
 func base_weapons() -> Array:
 	return WEAPONS.keys().filter(func(id): return not WEAPONS[id].get("evolution", false))
 

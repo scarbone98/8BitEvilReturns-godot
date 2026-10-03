@@ -346,8 +346,9 @@ func _guest_tick(delta: float) -> void:
 		_log_clock -= 30.0
 		_log_status("t")
 	for h in heroes.values():
-		h.step(delta, false)
+		h.step(delta, false, h == player)
 	_follow_camera()
+	shots.step(delta)  # our own predicted shots
 	popups.step(delta)
 	shots.queue_redraw()
 	front.queue_redraw()

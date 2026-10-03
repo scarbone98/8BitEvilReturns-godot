@@ -114,6 +114,11 @@ func explosion(w: Weapon, at: Vector2, r: float, dmg: float) -> void:
 # ---------------------------------------------------------------- Update
 
 func hit(w: Weapon, i: int, dmg: float, from: Vector2, kb: float) -> void:
+	if run.is_guest():
+		# Our own predicted shots only look the part; the host does the damage.
+		if i >= 0 and i < run.enemies.flash.size():
+			run.enemies.flash[i] = 0.12
+		return
 	var killed: bool = run.enemies.hurt(i, dmg, from, kb, w.player.slot)
 	var ls: float = w.def.get("lifesteal", 0.0)
 	if ls > 0.0:
@@ -298,37 +303,47 @@ const GROUND := 128  # flag on an op's type: drawn on the ground, under the mons
 
 var remote_ops: Array = []  # guests: the latest ops from the host
 
-func _sprite(out: Array, sheet: String, frame: int, center: Vector2, rot: float, sc: Vector2, col: Color, ground := false, id := 0, owner := -1) -> void:
-	var op := [OP_SPRITE | (GROUND if ground else 0), sheet, frame, center, rot, sc, col, id]
-	if owner >= 0:
-		op.append(owner)
-	out.append(op)
+## Tags for the ops ops() just built, same order: [owner seat or -1,
+## follows its owner (aura, orbit...), from a weapon guests draw themselves].
+var last_tags: Array = []
+var _cur: Dictionary  # the shot whose ops are being built
 
-## Everything to draw inside `view`, as ops.
+func _emit(out: Array, op: Array, anchored := false) -> void:
+	out.append(op)
+	var w = _cur.get("w")
+	var owner: int = w.player.slot if w else -1
+	last_tags.append([owner, anchored, w != null and Db.is_predicted(w.def)])
+
+func _sprite(out: Array, sheet: String, frame: int, center: Vector2, rot: float, sc: Vector2, col: Color, ground := false, id := 0, anchored := false) -> void:
+	_emit(out, [OP_SPRITE | (GROUND if ground else 0), sheet, frame, center, rot, sc, col, id], anchored)
+
+## Everything to draw inside `view`, as ops (tags in last_tags).
 func ops(view: Rect2) -> Array:
 	var out := []
+	last_tags = []
 	var cull := view.grow(64)
 	for s in list:
 		if s.delay > 0.0:
 			continue
+		_cur = s
 		var col: Color = s.tint
 		match s.type:
 			"aura":
-				out.append([OP_CIRCLE | GROUND, s.pos, s.radius, Color(s.w.def.get("color", Color.WHITE), 0.45 + sin(s.t * 6.0) * 0.15), s.w.player.slot])
+				_emit(out, [OP_CIRCLE | GROUND, s.pos, s.radius, Color(s.w.def.get("color", Color.WHITE), 0.45 + sin(s.t * 6.0) * 0.15)], true)
 				continue
 			"nova":
-				out.append([OP_RING, s.pos, s.radius, Color(s.w.def.get("color", Color.WHITE), 1.0 - s.t / s.life), s.w.player.slot])
+				_emit(out, [OP_RING, s.pos, s.radius, Color(s.w.def.get("color", Color.WHITE), 1.0 - s.t / s.life)], true)
 				continue
 			"zap":
-				out.append([OP_ZAP, s.points, Color(s.w.def.get("color", Color(0.75, 0.9, 1.0)), 1.0 - s.t / s.life)])
+				_emit(out, [OP_ZAP, s.points, Color(s.w.def.get("color", Color(0.75, 0.9, 1.0)), 1.0 - s.t / s.life)])
 				continue
 			"flash":
 				var a: float = 1.0 - s.t / s.life
-				out.append([OP_FLASH, 0.35 * a])
+				_emit(out, [OP_FLASH, 0.35 * a])
 				if s.w.def.has("sheet"):
 					var fsh := Db.sheet(s.w.def.sheet)
 					var f := int(s.t * fsh.fps) % int(fsh.frames)
-					_sprite(out, s.w.def.sheet, f, s.w.player.position + Vector2(0, -32), 0.0, Vector2(0.5, 0.5), Color(1, 1, 1, a), false, s.id, s.w.player.slot)
+					_sprite(out, s.w.def.sheet, f, s.w.player.position + Vector2(0, -32), 0.0, Vector2(0.5, 0.5), Color(1, 1, 1, a), false, s.id, true)
 				continue
 		if s.sheet == "" or not cull.has_point(s.pos):
 			continue
@@ -341,7 +356,7 @@ func ops(view: Rect2) -> Array:
 				frame = mini(int(s.t / s.life * sh.frames), sh.frames - 1)
 				var step: float = s.hw
 				for j in [-0.5, 0.5]:
-					_sprite(out, s.sheet, frame, s.pos + Vector2(step * j, 0), 0.0, Vector2(sc * s.side, sc), col, false, s.id * 2 + int(j > 0.0), s.w.player.slot)
+					_sprite(out, s.sheet, frame, s.pos + Vector2(step * j, 0), 0.0, Vector2(sc * s.side, sc), col, false, s.id * 2 + int(j > 0.0), true)
 			"fx":
 				# One-shot animations play through exactly once.
 				frame = mini(int(s.t / s.life * sh.frames), sh.frames - 1)
@@ -355,7 +370,7 @@ func ops(view: Rect2) -> Array:
 			"pool":
 				col.a = clampf((s.life - s.t) * 2.0, 0.0, 0.85)
 				if s.sheet == "blood_drop":
-					out.append([OP_PUDDLE | GROUND, s.pos, s.radius, col])
+					_emit(out, [OP_PUDDLE | GROUND, s.pos, s.radius, col])
 				else:
 					var k: float = s.radius * 2.2 / sh._w
 					_sprite(out, s.sheet, frame, s.pos, 0.0, Vector2(k, k), col, true, s.id)
@@ -367,12 +382,11 @@ func ops(view: Rect2) -> Array:
 					_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col, false, s.id)
 				else:
 					_sprite(out, s.sheet, frame, s.pos, 0.0, Vector2(-sc if s.vel.x < 0 else sc, sc), col, false, s.id)
-			"bullet":
-				_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col, false, s.id)
 			"orbit":
-				_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col, false, s.id, s.w.player.slot)
+				_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col, false, s.id, true)
 			_:
 				_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col, false, s.id)
+	_cur = {}
 	return out
 
 var _ops_cache: Array = []
@@ -381,7 +395,13 @@ var _ops_frame := -1
 ## This frame's ops (worked out once, shared by the ground and top layers).
 func frame_ops() -> Array:
 	if run.is_guest():
-		return remote_ops
+		# The host's picture, plus our own weapons, simulated here so they fire
+		# the instant we do (the host's copies of those are left out).
+		var f2 := Engine.get_process_frames()
+		if f2 != _ops_frame:
+			_ops_frame = f2
+			_ops_cache = remote_ops + ops(run.view_rect())
+		return _ops_cache
 	var f := Engine.get_process_frames()
 	if f != _ops_frame:
 		_ops_frame = f

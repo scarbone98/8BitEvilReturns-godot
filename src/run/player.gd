@@ -139,7 +139,9 @@ func _notification(what: int) -> void:
 func joystick() -> Dictionary:
 	return {"active": _touch_id != -1, "origin": _touch_origin, "vec": _touch_vec}
 
-func step(delta: float, simulate := true) -> void:
+## simulate: full rules (regen, weapons). A co-op guest's own hero passes
+## simulate=false, fire=true: it fires its predicted weapons for show only.
+func step(delta: float, simulate := true, fire := false) -> void:
 	_anim += delta
 	_invuln = maxf(0.0, _invuln - delta)
 	_hurt_flash = maxf(0.0, _hurt_flash - delta)
@@ -171,6 +173,10 @@ func step(delta: float, simulate := true) -> void:
 			heal(stats.regen * delta)
 		for w in weapons.values():
 			w.step(delta)
+	elif fire:
+		for w in weapons.values():
+			if Db.is_predicted(w.def):
+				w.step(delta)
 	queue_redraw()
 
 ## Test bot: keep the nearest enemy at claw range, back off when crowded,
@@ -333,17 +339,21 @@ func inventory() -> Dictionary:
 
 ## Guests mirror the inventory the host sends (weapons never fire here).
 func set_inventory(inv: Dictionary) -> void:
-	weapons.clear()
+	# Keep weapons we already have (their timers keep running), add new ones.
+	var had := weapons
+	weapons = {}
 	for id in inv.get("w", {}):
 		if Db.WEAPONS.has(id):
-			var w := Weapon.new(id, self, run)
-			w.level = int(inv.w[id])
+			var w: Weapon = had[id] if had.has(id) else Weapon.new(id, self, run)
+			while w.level < int(inv.w[id]):
+				w.level_up()  # also applies each level's changes, for our own shots
 			weapons[id] = w
 	passives.clear()
 	for id in inv.get("p", {}):
 		if Db.PASSIVES.has(id):
 			passives[id] = int(inv.p[id])
 	inv_rev += 1
+	recalc_stats()  # our predicted shots use the same sizes and speeds as the host's
 
 func level_of(id: String) -> int:
 	if weapons.has(id): return weapons[id].level
