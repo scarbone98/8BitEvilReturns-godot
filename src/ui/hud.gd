@@ -17,11 +17,11 @@ func _ready() -> void:
 	var pause := Button.new()
 	pause.icon = Db.tex("GUI_button_small")
 	pause.flat = true
-	pause.expand_icon = true
-	pause.custom_minimum_size = Vector2(20, 20)
+	pause.expand_icon = false
+	pause.custom_minimum_size = Vector2(16, 16)
 	pause.set_anchors_and_offsets_preset(PRESET_TOP_RIGHT)
-	pause.offset_left = -26; pause.offset_right = -6
-	pause.offset_top = 46; pause.offset_bottom = 66
+	pause.offset_left = -22; pause.offset_right = -6
+	pause.offset_top = 46; pause.offset_bottom = 62
 	pause.focus_mode = FOCUS_NONE
 	pause.pressed.connect(func(): pause_pressed.emit())
 	add_child(pause)
@@ -55,41 +55,53 @@ func _text(pos: Vector2, text: String, size := 8, col := UI.PALE, align := HORIZ
 	draw_string_outline(f, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 3, Color.BLACK)
 	draw_string(f, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
 
+## Draws a texture centred in a box at a whole-pixel scale (1x, 1/2, 1/4, 2x...).
+func _icon(t: Texture2D, center: Vector2, box: float) -> void:
+	var sz := Vector2(t.get_size())
+	var k := UI.pixel_scale(maxf(sz.x, sz.y), box)
+	draw_texture_rect(t, Rect2((center - sz * k * 0.5).floor(), sz * k), false)
+
 func _draw() -> void:
 	if run == null:
 		return
 	var p = run.player
 	var view := get_viewport_rect().size
 	var W := view.x
-	# XP bar: the original frame art with a candy-corn cap on the left.
+	# XP bar from the original art at 1x: the candy cap and left end, the bar
+	# body stretched from a single plain column, and the right end.
 	var bar := Db.tex("xpbar")
-	var bw := minf(W - 8, 256.0)
-	var bx := (W - bw) * 0.5
-	var sc := bw / 256.0
+	var x0 := 4.0
+	var x1 := W - 4.0
+	var mid_from := x0 + 40.0
+	var mid_to := x1 - 16.0
+	draw_texture_rect_region(bar, Rect2(x0, 0, 40, 32), Rect2(0, 0, 40, 32))
+	draw_texture_rect_region(bar, Rect2(mid_from, 0, mid_to - mid_from, 32), Rect2(60, 0, 1, 32))
+	draw_texture_rect_region(bar, Rect2(mid_to, 0, 16, 32), Rect2(240, 0, 16, 32))
 	var frac: float = clampf(run.xp / run.xp_next, 0.0, 1.0)
-	draw_rect(Rect2(bx + 22 * sc, 12 * sc, 224 * sc * frac, 8 * sc), Color("5ad1ff"))
-	draw_texture_rect(bar, Rect2(bx, 0, bw, 32 * sc), false)
+	var fill_from := x0 + 26.0
+	var fill_len := (x1 - 4.0) - fill_from
+	draw_rect(Rect2(fill_from, 13, floorf(fill_len * frac), 6), Color("5ad1ff"))
 	_text(Vector2(W - 6, 38), "LV %d" % run.level, 8, UI.GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
 	# Timer, the score.
 	_text(Vector2(W * 0.5, 44), UI.time_text(run.time), 12, UI.PALE, HORIZONTAL_ALIGNMENT_CENTER)
-	# Kills and silver.
-	var sy := 28.0 + ceilf(ceili(p.max_hp() / HEART_HP) / 7.0) * 11.0 + 2.0
-	draw_texture_rect(Db.tex("skull"), Rect2(6, sy, 10, 10), false)
-	_text(Vector2(19, sy + 9), str(p.kills), 8)
-	var coin := Db.sheet("silver")
-	draw_texture_rect_region(coin._tex, Rect2(6, sy + 12, 10, 10), Rect2(0, 0, coin._w, coin._h))
-	_text(Vector2(19, sy + 21), str(p.silver_found), 8)
-	# Hearts.
+	# Hearts at exactly half size, seven to a row so they stay clear of the timer.
 	var hearts := ceili(p.max_hp() / HEART_HP)
 	var hp: float = p.hp
 	for i in hearts:
-		# Seven per row keeps the hearts clear of the timer.
-		var r := Rect2(6 + (i % 7) * 11, 28 + (i / 7) * 11, 10, 10)
+		var r := Rect2(6 + (i % 7) * 10, 30 + (i / 7) * 10, 8, 8)
 		draw_texture_rect(Db.tex("heart_empty"), r, false)
 		var fill := clampf((hp - i * HEART_HP) / HEART_HP, 0.0, 1.0)
 		if fill > 0.0:
-			var t := Db.tex("heart")
-			draw_texture_rect_region(t, Rect2(r.position, Vector2(10 * fill, 10)), Rect2(0, 0, 16 * fill, 16))
+			# Fill in whole source pixels so the half-heart edge stays crisp.
+			var cols := ceilf(16.0 * fill / 2.0) * 2.0
+			draw_texture_rect_region(Db.tex("heart"), Rect2(r.position, Vector2(cols * 0.5, 8)), Rect2(0, 0, cols, 16))
+	# Kills and silver, icons at their native 16px.
+	var sy := 30.0 + ceilf(hearts / 7.0) * 10.0 + 2.0
+	draw_texture_rect(Db.tex("skull"), Rect2(4, sy, 16, 16), false)
+	_text(Vector2(22, sy + 12), str(p.kills), 8)
+	var coin := Db.sheet("silver")
+	draw_texture_rect_region(coin._tex, Rect2(4, sy + 17, 16, 16), Rect2(0, 0, coin._w, coin._h))
+	_text(Vector2(22, sy + 29), str(p.silver_found), 8)
 	if _banner != "":
 		var by := view.y * 0.4
 		draw_rect(Rect2(0, by - 14, W, 22), Color(0, 0, 0, 0.6))
@@ -103,15 +115,15 @@ func _draw() -> void:
 		_text(Vector2(W - 6, 82), "ROOM " + Net.code, 6, UI.DIM, HORIZONTAL_ALIGNMENT_RIGHT)
 	# Owned weapons and passives along the bottom.
 	var x := 4.0
-	var y := view.y - 18.0
+	var y := view.y - 21.0
 	for id in p.weapons:
 		_slot(Vector2(x, y), Db.WEAPONS[id].icon, p.weapons[id].level, Db.WEAPONS[id].get("evolution", false))
-		x += 17
+		x += 20
 	x = 4.0
-	y -= 17
+	y -= 20
 	for id in p.passives:
 		_slot(Vector2(x, y), Db.PASSIVES[id].icon, p.passives[id], false)
-		x += 17
+		x += 20
 	# Touch joystick.
 	var js: Dictionary = p.joystick()
 	if js.active:
@@ -121,8 +133,8 @@ func _draw() -> void:
 		draw_circle(o + js.vec * 26, 9, Color(1, 1, 1, 0.35))
 
 func _slot(at: Vector2, icon_id: String, lv: int, evolved: bool) -> void:
-	draw_rect(Rect2(at, Vector2(15, 15)), Color(0, 0, 0, 0.55))
-	draw_rect(Rect2(at, Vector2(15, 15)), UI.GOLD if evolved else Color(1, 1, 1, 0.25), false, 1.0)
-	draw_texture_rect(Db.icon_texture(icon_id), Rect2(at + Vector2(1, 1), Vector2(13, 13)), false)
+	draw_rect(Rect2(at, Vector2(18, 18)), Color(0, 0, 0, 0.55))
+	draw_rect(Rect2(at, Vector2(18, 18)), UI.GOLD if evolved else Color(1, 1, 1, 0.25), false, 1.0)
+	_icon(Db.icon_texture(icon_id), at + Vector2(9, 9), 16.0)
 	if not evolved:
-		_text(at + Vector2(9, 16), str(lv), 6, UI.GOLD)
+		_text(at + Vector2(12, 19), str(lv), 6, UI.GOLD)

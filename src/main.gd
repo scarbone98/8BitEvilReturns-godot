@@ -90,8 +90,8 @@ func show_title() -> void:
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 8)
 	root.add_child(box)
-	var logo := UI.icon(Db.tex("title"), 130)
-	logo.custom_minimum_size = Vector2(0, 130)
+	var logo := UI.icon(Db.tex("title"), 160)
+	logo.custom_minimum_size = Vector2(0, 128)
 	box.add_child(logo)
 	box.add_child(SheetView.new(Db.CHARACTERS[Meta.selected].run, Vector2(0, 40)))
 	var play := UI.button("PLAY", show_select, 28)
@@ -204,7 +204,7 @@ func show_select() -> void:
 			info_box.add_child(UI.body(sel.perk, 12))
 			var wrow := HBoxContainer.new()
 			wrow.alignment = BoxContainer.ALIGNMENT_CENTER
-			wrow.add_child(UI.icon(Db.icon_texture(w.icon), 22))
+			wrow.add_child(UI.icon(Db.icon_texture(w.icon), 32))
 			wrow.add_child(UI.label("Starts with " + w.name, 8, UI.PALE))
 			info_box.add_child(wrow)
 			if open:
@@ -251,7 +251,7 @@ func show_powerups() -> void:
 		row.offset_left = 6; row.offset_right = -6
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_theme_constant_override("separation", 6)
-		var ic := UI.icon(Db.icon_texture(p.icon), 22)
+		var ic := UI.icon(Db.icon_texture(p.icon), 32)
 		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_child(ic)
 		var col := VBoxContainer.new()
@@ -342,7 +342,7 @@ func _entry(title: String, text: String, lit: bool, icon_id := "") -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
 	if icon_id != "":
-		var ic := UI.icon(Db.icon_texture(icon_id), 22)
+		var ic := UI.icon(Db.icon_texture(icon_id), 32)
 		ic.modulate = Color.WHITE if lit else Color(0, 0, 0, 0.8)
 		row.add_child(ic)
 	var col := VBoxContainer.new()

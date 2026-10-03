@@ -608,7 +608,7 @@ func _upgrade_card(id: String, on_pick: Callable) -> Button:
 	row.offset_left = 8; row.offset_right = -8
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_theme_constant_override("separation", 8)
-	var ic := UI.icon(Db.icon_texture(d.icon), 36)
+	var ic := UI.icon(Db.icon_texture(d.icon), 32)
 	ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(ic)
 	var col := VBoxContainer.new()
@@ -696,7 +696,7 @@ func _unlock_row(id: String) -> Control:
 	else:
 		var d: Dictionary = Db.upgrade_def(id)
 		name = d.name
-		row.add_child(UI.icon(Db.icon_texture(d.icon), 20))
+		row.add_child(UI.icon(Db.icon_texture(d.icon), 16))
 	row.add_child(UI.label("UNLOCKED " + name, 8, UI.PALE))
 	return row
 
@@ -711,9 +711,9 @@ func _show_pause() -> void:
 	grid.columns = 6
 	grid.add_theme_constant_override("h_separation", 4)
 	for id in player.weapons:
-		grid.add_child(UI.icon(Db.icon_texture(Db.WEAPONS[id].icon), 28))
+		grid.add_child(UI.icon(Db.icon_texture(Db.WEAPONS[id].icon), 32))
 	for id in player.passives:
-		grid.add_child(UI.icon(Db.icon_texture(Db.PASSIVES[id].icon), 28))
+		grid.add_child(UI.icon(Db.icon_texture(Db.PASSIVES[id].icon), 32))
 	var c := CenterContainer.new()
 	c.add_child(grid)
 	box.add_child(c)

@@ -13,6 +13,7 @@ var _cooldown_mul := 1.0
 var _timer := 0.4
 var _spin := 0.0         # rotating aim for "spin" shooters
 var _flip := false
+var _side := 1.0         # whip-style weapons lash on the last side you faced
 
 func _init(weapon_id: String, p, r) -> void:
 	id = weapon_id
@@ -97,9 +98,15 @@ func fire() -> bool:
 					var off := k - (n - 1) * 0.5
 					shots.bullet(self, p + dir.orthogonal() * off * 4.0, dir.rotated(off * gap))
 		"slash":
-			var dirs := [player.facing, -player.facing, player.facing.orthogonal(), -player.facing.orthogonal()]
-			for k in mini(amount(), 4):
-				shots.slash(self, dirs[k], k * 0.08)
+			# Like VS's Whip: horizontal lashes on the side you last faced; the
+			# second goes the other way, more stack above and below.
+			if absf(player.facing.x) > 0.2:
+				_side = signf(player.facing.x)
+			for k in amount():
+				var side := _side if k % 2 == 0 else -_side
+				var idx := k / 2
+				var row := ((idx + 1) / 2) * (-1 if idx % 2 == 1 else 1)
+				shots.slash(self, side, row, k * 0.1)
 		"boomerang":
 			var n := amount()
 			var base_dir: Vector2 = player.facing

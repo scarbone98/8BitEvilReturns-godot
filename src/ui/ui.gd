@@ -67,14 +67,31 @@ static func button(text: String, on_press: Callable, min_h := 22) -> Button:
 	b.pressed.connect(on_press)
 	return b
 
-static func icon(tex: Texture2D, size := 24) -> TextureRect:
-	var r := TextureRect.new()
-	r.texture = tex
-	r.custom_minimum_size = Vector2(size, size)
-	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	r.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	return r
+## The largest power-of-two scale (..1/4, 1/2, 1, 2, 4..) that fits `px` in `box`,
+## so pixel art is never drawn at uneven sizes like 0.6x.
+static func pixel_scale(px: float, box: float) -> float:
+	var k := 1.0
+	if px > box:
+		while px * k > box and k > 1.0 / 64.0:
+			k *= 0.5
+	else:
+		while px * k * 2.0 <= box:
+			k *= 2.0
+	return k
+
+## An icon in a size x size box, drawn at a whole-pixel scale and centred
+## (never stretched to fit, which would make uneven pixels).
+static func icon(tex: Texture2D, size := 24) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(size, size)
+	c.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	if tex:
+		var sz := Vector2(tex.get_size())
+		var k := pixel_scale(maxf(sz.x, sz.y), size)
+		c.draw.connect(func():
+			var s := sz * k
+			c.draw_texture_rect(tex, Rect2(((c.size - s) * 0.5).floor(), s), false))
+	return c
 
 static func dim_overlay() -> ColorRect:
 	var c := ColorRect.new()

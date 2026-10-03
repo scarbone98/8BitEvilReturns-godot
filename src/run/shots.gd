@@ -32,10 +32,14 @@ func bullet(w: Weapon, from: Vector2, dir: Vector2) -> void:
 		"rot": dir.angle() + w.def.get("rot_offset", 0.0), "radius": 5.0 * w.area(),
 		"explode": w.def.get("explode", 0.0) * w.area(), "scale": w.def.get("shot_scale", 1.0)})
 
-func slash(w: Weapon, dir: Vector2, delay: float) -> void:
+## A whip lash: a long, flat strip beside the hero. side is -1/1, row stacks
+## extra lashes above (-) and below (+).
+func slash(w: Weapon, side: float, row: int, delay: float) -> void:
 	var sh := Db.sheet(w.def.sheet)
-	_add(w, "slash", {"dir": dir, "life": float(sh.frames) / sh.fps, "delay": delay,
-		"radius": 18.0 * w.area(), "pierce": -1, "rot": dir.angle()})
+	var hw := 28.0 * w.area()
+	var hh := 10.0 * w.area()
+	_add(w, "slash", {"side": side, "life": float(sh.frames) / sh.fps, "delay": delay, "pierce": -1,
+		"hw": hw, "hh": hh, "off": Vector2(side * (hw + 2.0), -6.0 + row * hh * 2.0)})
 
 func boomerang(w: Weapon, dir: Vector2) -> void:
 	_add(w, "boomerang", {"vel": dir * w.speed(), "life": 6.0, "pierce": -1, "rehit": 0.5,
@@ -133,6 +137,20 @@ func _touch(s: Dictionary, r: float) -> bool:
 				return false
 	return true
 
+## Like _touch, for a rectangle centred on the shot (half-width hw, half-height hh).
+func _touch_rect(s: Dictionary, hw: float, hh: float) -> void:
+	var e = run.enemies
+	for i in e.query_circle(s.pos, Vector2(hw, hh).length()):
+		var d: Vector2 = e.pos[i] - s.pos
+		var r: float = e.radius[i]
+		if absf(d.x) > hw + r or absf(d.y) > hh + r:
+			continue
+		var u: int = e.uid[i]
+		if s.hits.has(u):
+			continue
+		s.hits[u] = s.t
+		hit(s.w, i, s.damage, s.w.player.position, s.w.raw("knockback"))
+
 func _seek(s: Dictionary, delta: float, reach: float, turn: float) -> void:
 	var e = run.enemies
 	var ti: int = e.index_of_uid(s.target) if s.target != -1 else -1
@@ -163,9 +181,9 @@ func step(delta: float) -> void:
 				if not alive and s.t >= s.life and s.get("explode", 0.0) > 0.0:
 					explosion(s.w, s.pos, s.explode, s.damage)
 			"slash":
-				s.pos = owner_pos + s.dir * 16.0 * s.scale
+				s.pos = owner_pos + s.off
 				if s.t < 0.15:
-					_touch(s, s.radius)
+					_touch_rect(s, s.hw, s.hh)
 			"boomerang":
 				s.rot += delta * 18.0
 				var travelled: float = s.get("dist", 0.0) + s.vel.length() * delta
@@ -309,13 +327,19 @@ func ops(view: Rect2) -> Array:
 		var frame := int(s.t * sh.fps) % int(sh.frames)
 		var sc: float = s.scale
 		match s.type:
-			"fx", "slash":
+			"slash":
+				# The claw marks twice across the strip, mirrored on the left.
+				frame = mini(int(s.t / s.life * sh.frames), sh.frames - 1)
+				var step: float = s.hw
+				for j in [-0.5, 0.5]:
+					_sprite(out, s.sheet, frame, s.pos + Vector2(step * j, 0), 0.0, Vector2(sc * s.side, sc), col)
+			"fx":
 				# One-shot animations play through exactly once.
 				frame = mini(int(s.t / s.life * sh.frames), sh.frames - 1)
 				var center: Vector2 = s.pos
-				if s.type == "fx" and s.get("anchor") == "bottom":
+				if s.get("anchor") == "bottom":
 					center += Vector2(0, -sh._h * sc * 0.5 + 6)
-				_sprite(out, s.sheet, frame, center, s.rot if s.type == "slash" else 0.0, Vector2(sc, sc), col)
+				_sprite(out, s.sheet, frame, center, 0.0, Vector2(sc, sc), col)
 			"warn":
 				var pulse: float = (1.0 + sin(s.t * 20.0) * 0.15) * 16.0 / sh._w
 				_sprite(out, s.sheet, frame, s.pos, 0.0, Vector2(pulse, pulse), Color(1, 1, 1, 0.9))

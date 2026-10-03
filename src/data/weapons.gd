@@ -14,7 +14,8 @@ extends RefCounted
 ## Behaviours (see Weapon.fire and Shots):
 ##   shooter   projectiles; aim = facing | nearest | auto (nearest, else facing) | spin,
 ##             spread (rad between shots)
-##   slash     melee arcs around the hero
+##   slash     whip-style horizontal lashes on the side you last faced; more
+##             amount adds the other side, then rows above and below
 ##   boomerang out and back, hits on both legs
 ##   strike    instant hit at enemies; target = random | nearest, warn = seconds of crosshair first
 ##   orbit     circles the hero for `duration`
@@ -71,15 +72,15 @@ const WEAPONS := {
 	},
 	"claw": {
 		"name": "Claw", "quote": "RAWR xD", "icon": "owl_claw_skill",
-		"behavior": "slash", "sheet": "bearclaw",
+		"behavior": "slash", "sheet": "bearclaw",  # whip-style: horizontal lashes
 		"base": {"cooldown": 1.0, "damage": 25.0, "area": 1.0, "knockback": 60.0},  # (orig) 1 / 25
 		"levels": [
-			{"desc": "Also slash behind you", "amount": 1},
+			{"desc": "Also slashes the other side", "amount": 1},
 			{"desc": "+10 damage", "damage": 10.0},
-			{"desc": "Bigger slashes", "area": 0.2},
+			{"desc": "Longer slashes", "area": 0.15},
 			{"desc": "+10 damage", "damage": 10.0},
 			{"desc": "Cooldown -15%", "cooldown_mul": 0.85},
-			{"desc": "Bigger slashes", "area": 0.2},
+			{"desc": "Longer slashes", "area": 0.15},
 			{"desc": "+15 damage", "damage": 15.0},
 		],
 		"evolve": {"with": "snail_king", "into": "bear_maul"},
@@ -417,7 +418,7 @@ const WEAPONS := {
 		"base": {"cooldown": 1.0, "damage": 45.0, "speed": 180.0, "pierce": 3, "amount": 3, "area": 1.5, "range": 260.0}},
 	"bear_maul": {"name": "Bear Maul", "quote": "RAWR XD XD", "icon": "owl_claw_skill",
 		"evolution": true, "tint": Color(1.0, 0.4, 0.4), "behavior": "slash", "sheet": "bearclaw",
-		"base": {"cooldown": 0.6, "damage": 70.0, "area": 1.8, "amount": 4, "knockback": 90.0}},
+		"base": {"cooldown": 0.6, "damage": 70.0, "area": 1.5, "amount": 4, "knockback": 90.0}},
 	"blood_moon": {"name": "Blood Moon", "quote": "OY MATE, THAT'S A LOT", "icon": "boomerang_skill",
 		"evolution": true, "tint": Color(1.0, 0.35, 0.4), "behavior": "boomerang", "sheet": "boomerang",
 		"base": {"cooldown": 1.5, "damage": 35.0, "speed": 240.0, "pierce": -1, "amount": 6, "range": 150.0, "area": 1.5}},
