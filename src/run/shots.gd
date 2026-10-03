@@ -292,11 +292,17 @@ const OP_ZAP := 3
 const OP_FLASH := 4
 const OP_PUDDLE := 5
 const GROUND := 128  # flag on an op's type: drawn on the ground, under the monsters
+# Ops that follow a hero (aura, pulse, orbiting weapons, lashes) also carry the
+# owner's seat as their last element, so a guest can pin them to that hero as
+# drawn on its own screen instead of where the host last saw it.
 
 var remote_ops: Array = []  # guests: the latest ops from the host
 
-func _sprite(out: Array, sheet: String, frame: int, center: Vector2, rot: float, sc: Vector2, col: Color, ground := false, id := 0) -> void:
-	out.append([OP_SPRITE | (GROUND if ground else 0), sheet, frame, center, rot, sc, col, id])
+func _sprite(out: Array, sheet: String, frame: int, center: Vector2, rot: float, sc: Vector2, col: Color, ground := false, id := 0, owner := -1) -> void:
+	var op := [OP_SPRITE | (GROUND if ground else 0), sheet, frame, center, rot, sc, col, id]
+	if owner >= 0:
+		op.append(owner)
+	out.append(op)
 
 ## Everything to draw inside `view`, as ops.
 func ops(view: Rect2) -> Array:
@@ -308,10 +314,10 @@ func ops(view: Rect2) -> Array:
 		var col: Color = s.tint
 		match s.type:
 			"aura":
-				out.append([OP_CIRCLE | GROUND, s.pos, s.radius, Color(s.w.def.get("color", Color.WHITE), 0.45 + sin(s.t * 6.0) * 0.15)])
+				out.append([OP_CIRCLE | GROUND, s.pos, s.radius, Color(s.w.def.get("color", Color.WHITE), 0.45 + sin(s.t * 6.0) * 0.15), s.w.player.slot])
 				continue
 			"nova":
-				out.append([OP_RING, s.pos, s.radius, Color(s.w.def.get("color", Color.WHITE), 1.0 - s.t / s.life)])
+				out.append([OP_RING, s.pos, s.radius, Color(s.w.def.get("color", Color.WHITE), 1.0 - s.t / s.life), s.w.player.slot])
 				continue
 			"zap":
 				out.append([OP_ZAP, s.points, Color(s.w.def.get("color", Color(0.75, 0.9, 1.0)), 1.0 - s.t / s.life)])
@@ -322,7 +328,7 @@ func ops(view: Rect2) -> Array:
 				if s.w.def.has("sheet"):
 					var fsh := Db.sheet(s.w.def.sheet)
 					var f := int(s.t * fsh.fps) % int(fsh.frames)
-					_sprite(out, s.w.def.sheet, f, s.w.player.position + Vector2(0, -32), 0.0, Vector2(0.5, 0.5), Color(1, 1, 1, a))
+					_sprite(out, s.w.def.sheet, f, s.w.player.position + Vector2(0, -32), 0.0, Vector2(0.5, 0.5), Color(1, 1, 1, a), false, s.id, s.w.player.slot)
 				continue
 		if s.sheet == "" or not cull.has_point(s.pos):
 			continue
@@ -335,7 +341,7 @@ func ops(view: Rect2) -> Array:
 				frame = mini(int(s.t / s.life * sh.frames), sh.frames - 1)
 				var step: float = s.hw
 				for j in [-0.5, 0.5]:
-					_sprite(out, s.sheet, frame, s.pos + Vector2(step * j, 0), 0.0, Vector2(sc * s.side, sc), col, false, s.id)
+					_sprite(out, s.sheet, frame, s.pos + Vector2(step * j, 0), 0.0, Vector2(sc * s.side, sc), col, false, s.id * 2 + int(j > 0.0), s.w.player.slot)
 			"fx":
 				# One-shot animations play through exactly once.
 				frame = mini(int(s.t / s.life * sh.frames), sh.frames - 1)
@@ -363,6 +369,8 @@ func ops(view: Rect2) -> Array:
 					_sprite(out, s.sheet, frame, s.pos, 0.0, Vector2(-sc if s.vel.x < 0 else sc, sc), col, false, s.id)
 			"bullet":
 				_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col, false, s.id)
+			"orbit":
+				_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col, false, s.id, s.w.player.slot)
 			_:
 				_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col, false, s.id)
 	return out

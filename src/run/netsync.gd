@@ -26,7 +26,7 @@ const DELAY_MAX := 0.15
 const CHUNK_BYTES := 7000  # the server refuses packets over 8 KB
 # Bump when the snapshot format or messages change, so a player on an old page
 # (or an old server copy) is told to reload instead of seeing garbage.
-const PROTOCOL := 3
+const PROTOCOL := 4
 
 var run
 var _clock := 0.0
@@ -230,9 +230,26 @@ func _put_color(b: StreamPeerBuffer, c: Color) -> void:
 	b.put_u8(c.b8)
 	b.put_u8(c.a8)
 
+const ANCHORED := 64  # on the wire: this op follows a hero; its positions are offsets from them
+
+func _anchor_of(op: Array) -> int:
+	var kind := int(op[0]) & 63
+	if kind == 0 and op.size() > 8:
+		return int(op[8])
+	if (kind == 1 or kind == 2) and op.size() > 4:
+		return int(op[4])
+	return -1
+
 func _put_op(b: StreamPeerBuffer, op: Array, origin: Vector2) -> void:
-	b.put_u8(op[0])  # type, with the ground flag
-	match int(op[0]) & 127:
+	var owner := _anchor_of(op)
+	var hero = run.heroes.get(owner) if owner >= 0 else null
+	if hero:
+		b.put_u8(int(op[0]) | ANCHORED)
+		b.put_u8(owner)
+		origin = hero.position  # positions become offsets from the owner
+	else:
+		b.put_u8(op[0])  # type, with the ground flag
+	match int(op[0]) & 63:
 		0:  # sprite
 			b.put_u16(int(op[7]) & 0xFFFF if op.size() > 7 else 0)
 			b.put_u8(_sheet_index.get(op[1], 0))
@@ -400,20 +417,29 @@ func _read_shots(data: PackedByteArray) -> void:
 	var ops: Array = _building.ops
 	for k in n:
 		var raw := b.get_u8()
-		var op := raw & 127
+		var owner := b.get_u8() if raw & ANCHORED else -1
+		var base := Vector2.ZERO if owner >= 0 else _origin  # anchored: keep offsets
+		raw &= ~ANCHORED
+		var op := raw & 63
 		match op:
 			0:
 				var id := b.get_u16()
 				var sheet: String = _sheet_ids[mini(b.get_u8(), _sheet_ids.size() - 1)]
 				var frame := b.get_u8()
-				var pos := _off(b, _origin)
+				var pos := _off(b, base)
 				var rot := b.get_u8() / 256.0 * TAU
 				var sc := Vector2(b.get_8() / 16.0, b.get_u8() / 16.0)
-				ops.append([raw, sheet, frame, pos, rot, sc, _get_color(b), id])
+				var o := [raw, sheet, frame, pos, rot, sc, _get_color(b), id]
+				if owner >= 0:
+					o.append(owner)
+				ops.append(o)
 			1, 2, 5:
-				var pos := _off(b, _origin)
+				var pos := _off(b, base)
 				var r := b.get_u16() / 4.0
-				ops.append([raw, pos, r, _get_color(b)])
+				var o := [raw, pos, r, _get_color(b)]
+				if owner >= 0:
+					o.append(owner)
+				ops.append(o)
 			3:
 				var m := b.get_u8()
 				var pts := PackedVector2Array()
@@ -488,25 +514,47 @@ func _interpolate(delta: float) -> void:
 		h._invuln = 0.1 if flags & 16 else 0.0
 		h.max_hp_override = 100.0
 		h.hp = cur[2] * 100.0
-	# Shots: sprites with an id glide between snapshots
+	# Shots: sprites with an id glide between snapshots; effects that follow a
+	# hero are pinned to that hero as drawn here (our own: where we really are).
 	var prev_ops := {}
 	for op in a.ops:
-		if op.size() > 7 and op[7] != 0:
+		if (int(op[0]) & 63) == 0 and op[7] != 0:
 			prev_ops[op[7]] = op
 	var ops := []
 	for op in bf.ops:
-		if op.size() > 7 and op[7] != 0 and prev_ops.has(op[7]):
-			var p: Array = prev_ops[op[7]]
-			var o: Array = op.duplicate()
-			o[3] = p[3].lerp(op[3], k)
-			o[4] = lerp_angle(p[4], op[4], k)
+		var kind := int(op[0]) & 63
+		var owner := _anchor_of(op)
+		var base := Vector2.ZERO
+		if owner >= 0:
+			var h = run.heroes.get(owner)
+			if h == null:
+				continue
+			base = h.position
+		if kind == 0:
+			var o: Array = op.slice(0, 8)
+			if op[7] != 0 and prev_ops.has(op[7]) and _anchor_of(prev_ops[op[7]]) == owner:
+				var p: Array = prev_ops[op[7]]
+				o[3] = p[3].lerp(op[3], k)
+				o[4] = lerp_angle(p[4], op[4], k)
+			o[3] += base
+			ops.append(o)
+		elif owner >= 0:
+			var o: Array = op.slice(0, 4)
+			o[1] += base
 			ops.append(o)
 		else:
 			ops.append(op)
 	run.shots.remote_ops = ops
 	run.shots.queue_redraw()
+	if run.autoplay:
+		for op in ops:
+			if (int(op[0]) & 63) == 2:  # a pulse ring: is it centred on its owner here?
+				_ring_seen += 1
+				_ring_off = maxf(_ring_off, (op[1] - run.player.position).length())
 
 # Test bots: the biggest frame-to-frame jump of any enemy, reported every 10s.
+var _ring_seen := 0
+var _ring_off := 0.0
 var _last_pos := {}
 var _max_jump := 0.0
 var _jump_clock := 0.0
@@ -520,7 +568,9 @@ func _measure(list: Array) -> void:
 	_last_pos = now
 	_jump_clock += get_process_delta_time()
 	if _jump_clock >= 10.0:
-		print("[smooth] biggest enemy jump between frames: %.1f px, buffer %d ms" % [_max_jump, roundi(render_delay * 1000.0)])
+		print("[smooth] biggest enemy jump between frames: %.1f px, buffer %d ms; pulse rings drawn %d, furthest from our hero %.1f px" % [_max_jump, roundi(render_delay * 1000.0), _ring_seen, _ring_off])
+		_ring_seen = 0
+		_ring_off = 0.0
 		_jump_clock = 0.0
 		_max_jump = 0.0
 
