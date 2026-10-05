@@ -80,5 +80,7 @@ const SHEETS := {
 	"haunted_lamp": {"path": "haunted_lamp", "frames": 4, "fps": 6},
 	"tornado_hat": {"path": "tornado_hat", "frames": 4, "fps": 12},
 	"spirit_bat": {"path": "spirit_bat", "frames": 4, "fps": 12},
+	"bomb_blast": {"path": "bomb_blast", "frames": 8, "fps": 16},
+	"judgment_sword": {"path": "judgment_sword", "frames": 10, "fps": 12},
 	"crosshair": {"path": "crosshair_new", "frames": 1, "fps": 1},
 }

@@ -290,6 +290,113 @@ def spirit_bat():
         frames.append(im)
     return frames
 
+# ---------------------------------------------------------------- Carpet Bombing
+def bomb_blast():
+    """Flash, fireball, then a rolling smoke mushroom shedding embers.
+    32x32, 8 frames, centred."""
+    w0, f0, f1, f2, f3 = hexc("ffffff"), hexc("fff3b0"), hexc("ffb238"), hexc("f0571e"), hexc("9c2a14")
+    s0, s1, s2 = hexc("8a8178"), hexc("5a524c"), hexc("33302e")
+    rng = random.Random(3)
+    frames = []
+    for k in range(8):
+        im = new(32, 32)
+        if k == 0:
+            disc(im, 16, 16, 6, f0); disc(im, 16, 16, 3.5, w0)
+            for a in range(8):
+                ang = a * math.pi / 4
+                line(im, 16 + math.cos(ang) * 6, 16 + math.sin(ang) * 6, 16 + math.cos(ang) * 11, 16 + math.sin(ang) * 11, f0)
+        elif k <= 3:
+            r = [0, 11, 13.5, 14.5][k]
+            for y in range(32):
+                for x in range(32):
+                    d = math.hypot(x + 0.5 - 16, y + 0.5 - 16) + math.sin(math.atan2(y - 16, x - 16) * 7 + k) * 1.2
+                    if d < r:
+                        t = d / r
+                        c = (w0 if k == 1 else f0) if t < 0.3 else f1 if t < 0.55 else f2 if t < 0.8 else (f3 if k < 3 else s1)
+                        put(im, x, y, c)
+        else:
+            # smoke mushroom: a cap rising off a stem, darkening as it goes
+            rise = (k - 4) * 2
+            for (cx, cy, r) in [(10, 12, 6), (16, 9, 7.5), (22, 12, 6), (16, 14, 6)]:
+                disc(im, cx, cy - rise, r + (k - 4) * 0.5, s1 if k < 6 else s2)
+            for (cx, cy, r) in [(12, 10, 3), (17, 7, 4)]:
+                disc(im, cx, cy - rise, r, s0)
+            thick(im, 16, 18 - rise, 16, 28, 2.5 - (k - 4) * 0.4, s1)
+            for x in range(8, 25):
+                if (x + k) % 3:
+                    put(im, x, 28 + (x % 2), s2)
+            for e in range(6):
+                put(im, rng.randint(4, 27), rng.randint(2, 26), f1 if e % 2 else f2)
+            if k >= 6:
+                dither_fade(im, 1.0 - (k - 5) * 0.3, seed=k)
+        outline(im, hexc("1a0a06"))
+        frames.append(im)
+    return frames
+
+# ---------------------------------------------------------------- Divine Judgment
+def judgment_sword():
+    """A golden sword with angel wings drives down point-first through a beam
+    of light. 64x64, 10 frames (shown at half size above the hero as the
+    whole screen is smitten)."""
+    g0, g1, g2, g3 = hexc("fffbe0"), hexc("ffe07a"), hexc("e0a83a"), hexc("8a5a12")
+    st, st2, gem = hexc("f4f7fb"), hexc("aeb7c6"), hexc("c22a43")
+    wing, wing2 = hexc("ffffff"), hexc("d8e2f4")
+    beam, beam2 = hexc("fff6c8", 120), hexc("ffffff", 170)
+    drop = [-30, -20, -11, -4, 0, 0, 0, 0, 0, 0]
+    frames = []
+    for k in range(10):
+        im = new(64, 64)
+        a = 1.0 if k < 7 else 1.0 - (k - 6) * 0.3
+        # beam of light
+        for y in range(64):
+            w = 5 + y * 0.12
+            for x in range(64):
+                if abs(x + 0.5 - 32) < w and (x + y + k) % 2 == 0:
+                    put(im, x, y, beam2 if abs(x + 0.5 - 32) < w * 0.4 else beam)
+        oy = drop[k]
+        # wings spread from the crossguard, flapping out as it lands
+        spread = [0.4, 0.5, 0.6, 0.75, 1.0, 1.0, 0.95, 0.9, 0.9, 0.9][k]
+        for side in (-1, 1):
+            x0, y0 = 32 + side * 3, 22 + oy
+            tipx, tipy = x0 + side * 19 * spread, y0 - 10 * spread
+            # filled wing: leading edge up to the tip, feathered trailing edge below
+            poly(im, [(x0, y0 - 2), (tipx, tipy), (x0 + side * 15 * spread, y0 + 4),
+                      (x0 + side * 10 * spread, y0 + 8), (x0 + side * 5 * spread, y0 + 9), (x0, y0 + 5)], wing2)
+            poly(im, [(x0, y0 - 2), (tipx, tipy), (x0 + side * 12 * spread, y0 + 1), (x0, y0 + 2)], wing)
+            for f in range(1, 4):
+                fx = x0 + side * (5 * f) * spread
+                line(im, fx, y0 + 1, fx + side * 2, y0 + 8 - f, hexc("b8c4d8"))
+        # blade, point down
+        for y in range(26, 58):
+            yy = y + oy
+            hw = 2 if y < 52 else max(0, (58 - y) // 2)
+            for x in range(32 - hw, 32 + hw + 1):
+                put(im, x, yy, st if x <= 32 else st2)
+            put(im, 32, yy, g0 if y < 50 else st)
+        # crossguard, grip and pommel
+        for x in range(23, 42):
+            put(im, x, 23 + oy, g1); put(im, x, 24 + oy, g2)
+        for y in range(14, 23):
+            put(im, 31, y + oy, g2); put(im, 32, y + oy, g1); put(im, 33, y + oy, g3)
+        disc(im, 32, 12 + oy, 2.6, g1)
+        put(im, 32, 23 + oy, gem); put(im, 32, 24 + oy, gem)
+        # halo above the pommel
+        for x in range(26, 39):
+            for y in range(4, 9):
+                d = ((x + 0.5 - 32) / 6) ** 2 + ((y + 0.5 - 6 - oy * 0.0) / 2) ** 2
+                if 0.55 < d < 1.0:
+                    put(im, x, y + oy, g1)
+        # impact sparkle
+        if k in (4, 5):
+            for ang in range(8):
+                t = ang * math.pi / 4
+                line(im, 32 + math.cos(t) * 4, 58 + math.sin(t) * 2, 32 + math.cos(t) * (10 + k), 58 + math.sin(t) * 4, g0)
+        outline(im, hexc("2a1806"))
+        if a < 1.0:
+            dither_fade(im, a, seed=k)
+        frames.append(im)
+    return frames
+
 if __name__ == "__main__":
     A.save(sheet(maul_slash()), "maul_slash")
     A.save(sheet(storm_strike()), "storm_strike")
@@ -298,3 +405,5 @@ if __name__ == "__main__":
     A.save(sheet(haunted_lamp()), "haunted_lamp")
     A.save(sheet(tornado_hat()), "tornado_hat")
     A.save(sheet(spirit_bat()), "spirit_bat")
+    A.save(sheet(bomb_blast()), "bomb_blast")
+    A.save(sheet(judgment_sword()), "judgment_sword")

@@ -107,7 +107,13 @@ func zap(w: Weapon, points: PackedVector2Array) -> void:
 	_add(w, "zap", {"points": points, "life": 0.18})
 
 func flash(w: Weapon) -> void:
-	_add(w, "flash", {"life": 0.35})
+	# The screen flash fades in 0.35s; a sheet (holy cross, judgment sword)
+	# plays through once above the hero, so the flash lives that long.
+	var life := 0.35
+	if w.def.has("sheet"):
+		var sh := Db.sheet(w.def.sheet)
+		life = maxf(life, float(sh.frames) / sh.fps)
+	_add(w, "flash", {"life": life})
 
 func explosion(w: Weapon, at: Vector2, r: float, dmg: float) -> void:
 	for i in run.enemies.query_circle(at, r):
@@ -354,12 +360,13 @@ func ops(view: Rect2) -> Array:
 				_emit(out, [OP_ZAP, s.points, Color(s.w.def.get("color", Color(0.75, 0.9, 1.0)), 1.0 - s.t / s.life)])
 				continue
 			"flash":
-				var a: float = 1.0 - s.t / s.life
-				_emit(out, [OP_FLASH, 0.35 * a])
+				var a: float = maxf(0.0, 1.0 - s.t / 0.35)
+				if a > 0.0:
+					_emit(out, [OP_FLASH, 0.35 * a])
 				if s.w.def.has("sheet"):
 					var fsh := Db.sheet(s.w.def.sheet)
-					var f := int(s.t * fsh.fps) % int(fsh.frames)
-					_sprite(out, s.w.def.sheet, f, s.w.player.position + Vector2(0, -32), 0.0, Vector2(0.5, 0.5), Color(1, 1, 1, a), false, s.id, true)
+					var f := mini(int(s.t * fsh.fps), int(fsh.frames) - 1)
+					_sprite(out, s.w.def.sheet, f, s.w.player.position + Vector2(0, -32), 0.0, Vector2(0.5, 0.5), col, false, s.id, true)
 				continue
 		if s.sheet == "" or not cull.has_point(s.pos):
 			continue
