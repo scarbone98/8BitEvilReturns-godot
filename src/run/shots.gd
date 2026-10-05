@@ -409,6 +409,12 @@ func ops(view: Rect2) -> Array:
 				_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col, false, s.id, true)
 			_:
 				_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col, false, s.id)
+	# Monster shots (host/solo simulate them; guests get them in these ops).
+	_cur = {}
+	for b in run.enemies.bullets:
+		if cull.has_point(b.pos):
+			var bsh := Db.sheet(b.sheet)
+			_sprite(out, b.sheet, int(b.t * bsh.fps) % int(bsh.frames), b.pos, b.rot, Vector2.ONE, Color.WHITE)
 	_cur = {}
 	return out
 

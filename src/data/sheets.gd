@@ -86,5 +86,13 @@ const SHEETS := {
 	"prop_obelisk": {"path": "prop_obelisk", "frames": 4, "fps": 6},
 	"prop_sewer_pipe": {"path": "prop_sewer_pipe", "frames": 4, "fps": 6},
 	"prop_candelabra": {"path": "prop_candelabra", "frames": 4, "fps": 6},
+	"eye_stalk": {"path": "eye_stalk", "frames": 4, "fps": 4},
+	"gourd_spitter": {"path": "gourd_spitter", "frames": 4, "fps": 4},
+	"frost_totem": {"path": "frost_totem", "frames": 4, "fps": 4},
+	"sludge_toad": {"path": "sludge_toad", "frames": 4, "fps": 4},
+	"orb_purple": {"path": "orb_purple", "frames": 2, "fps": 8},
+	"seed_fire": {"path": "seed_fire", "frames": 2, "fps": 8},
+	"ice_shard": {"path": "ice_shard", "frames": 1, "fps": 1},
+	"goo_glob": {"path": "goo_glob", "frames": 2, "fps": 6},
 	"crosshair": {"path": "crosshair_new", "frames": 1, "fps": 1},
 }

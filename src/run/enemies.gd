@@ -16,6 +16,8 @@ var _kind_fly := PackedByteArray()
 var _kind_faces := PackedInt32Array()
 var _kind_alpha := PackedFloat32Array()
 var _kind_sheet: Array[Dictionary] = []
+var _kind_rooted := PackedByteArray()
+var _kind_shoot: Array[Dictionary] = []  # {} for monsters that don't shoot
 
 var run  # Run, set by Run
 var kind: Array[String] = []
@@ -32,6 +34,10 @@ var flash := PackedFloat32Array()
 var uid := PackedInt32Array()
 var boss := PackedByteArray()
 var kidx := PackedInt32Array()  # index into the _kind_* tables
+var shoot_t := PackedFloat32Array()  # seconds until a shooter fires again
+## Monster shots in flight (host/solo): {pos, vel, t, life, damage, sheet, rot}.
+## Guests see them through the shots' draw ops.
+var bullets: Array[Dictionary] = []
 
 var _next_uid := 1
 var _head := PackedInt32Array()  # first enemy in each bucket, -1 if none
@@ -50,6 +56,8 @@ func _ready() -> void:
 		_kind_faces.append(int(d.faces))
 		_kind_alpha.append(d.get("alpha", 1.0))
 		_kind_sheet.append(Db.sheet(d.sheet))
+		_kind_rooted.append(1 if d.get("rooted", false) else 0)
+		_kind_shoot.append(d.get("shoot", {}))
 
 func count() -> int:
 	return pos.size()
@@ -72,6 +80,7 @@ func spawn(k: String, at: Vector2, hp_mul := 1.0, is_boss := false, speed_mul :=
 	uid.append(_next_uid)
 	boss.append(1 if is_boss else 0)
 	kidx.append(_kinds.find(k))
+	shoot_t.append(randf_range(0.5, 1.0) * float(d.get("shoot", {}).get("every", 1.0)))
 	_next_uid += 1
 
 func _remove(i: int) -> void:
@@ -82,8 +91,8 @@ func _remove(i: int) -> void:
 		hp[i] = hp[last]; max_hp[i] = max_hp[last]; speed[i] = speed[last]
 		damage[i] = damage[last]; radius[i] = radius[last]; scale_[i] = scale_[last]
 		anim[i] = anim[last]; flash[i] = flash[last]; uid[i] = uid[last]; boss[i] = boss[last]
-		kidx[i] = kidx[last]
-	kidx.remove_at(last)
+		kidx[i] = kidx[last]; shoot_t[i] = shoot_t[last]
+	kidx.remove_at(last); shoot_t.remove_at(last)
 	kind.remove_at(last); pos.remove_at(last); knock.remove_at(last)
 	hp.remove_at(last); max_hp.remove_at(last); speed.remove_at(last)
 	damage.remove_at(last); radius.remove_at(last); scale_.remove_at(last)
@@ -244,6 +253,16 @@ func step(delta: float, targets: PackedVector2Array, view: Rect2) -> void:
 		if dist > far and boss[i] == 0:
 			pos[i] = goal + to / dist * (far * 0.6)
 			continue
+		var ki := kidx[i]
+		if _kind_rooted[ki] == 1:
+			# Rooted: stays put; shooters fire at whoever is in range.
+			var sh: Dictionary = _kind_shoot[ki]
+			if moving and not sh.is_empty() and onscreen:
+				shoot_t[i] -= dt
+				if shoot_t[i] <= 0.0 and dist < float(sh.range):
+					shoot_t[i] = float(sh.every) * randf_range(0.85, 1.15)
+					_fire(p, to / maxf(dist, 0.001), sh, radius[i])
+			continue
 		var v := Vector2.ZERO
 		if moving and dist > 1.0:
 			v = to / dist * speed[i]
@@ -272,9 +291,35 @@ func step(delta: float, targets: PackedVector2Array, view: Rect2) -> void:
 		if i % 3 == stagger and _kind_fly[kidx[i]] == 0:
 			p = obstacles.push_out(p, radius[i] * 0.6)
 		pos[i] = p
+	_step_bullets(delta)
 	queue_redraw()
 
-# ---------------------------------------------------------------- Guests
+func _fire(from: Vector2, dir: Vector2, sh: Dictionary, r: float) -> void:
+	var spd: float = float(sh.speed)
+	bullets.append({"pos": from + dir * r + Vector2(0, -6), "vel": dir * spd, "t": 0.0,
+		"life": float(sh.range) * 1.4 / spd, "damage": float(sh.damage), "sheet": str(sh.sheet),
+		"rot": dir.angle() if sh.get("point", false) else 0.0})
+
+## Moves monster shots; they hurt the first hero they touch and stop at props.
+func _step_bullets(delta: float) -> void:
+	if bullets.is_empty():
+		return
+	var heroes: Array = run.living_heroes()
+	var i := bullets.size() - 1
+	while i >= 0:
+		var b: Dictionary = bullets[i]
+		b.t += delta
+		b.pos += b.vel * delta
+		var gone: bool = b.t > b.life or not run.obstacles.is_free(b.pos, 1.5)
+		if not gone:
+			for h in heroes:
+				if h.position.distance_squared_to(b.pos) < (h.RADIUS + 3.0) * (h.RADIUS + 3.0):
+					h.take_hit(b.damage)
+					gone = true
+					break
+		if gone:
+			bullets.remove_at(i)
+		i -= 1
 # On a guest nothing is simulated: NetSync hands over the already-smoothed
 # enemy list every frame.
 
@@ -284,7 +329,7 @@ func mirror_set(entries: Array, delta: float) -> void:
 	for i in uid.size():
 		old_anim[uid[i]] = anim[i]
 	var n := entries.size()
-	pos.resize(n); anim.resize(n); uid.resize(n); kidx.resize(n); scale_.resize(n)
+	pos.resize(n); anim.resize(n); uid.resize(n); kidx.resize(n); scale_.resize(n); shoot_t.resize(n)
 	flash.resize(n); boss.resize(n); hp.resize(n); max_hp.resize(n); radius.resize(n); knock.resize(n)
 	kind.clear()
 	for i in n:

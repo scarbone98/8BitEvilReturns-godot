@@ -834,8 +834,8 @@ func _log_status(tag: String) -> void:
 	for p in pickups.list:
 		if not obstacles.is_free(p.pos, 0.0):
 			stuck += 1
-	print("[%s] %s %s lv%d hp%d/%d kills%d heroes%d enemies%d shots%d pickups%d inside_props%d fps%d | %s" % [tag, mode, UI.time_text(time),
-		level, player.hp, player.max_hp(), team_kills(), heroes.size(), enemies.count(), shots.list.size(),
+	print("[%s] %s %s lv%d hp%d/%d kills%d heroes%d enemies%d shots%d monster_shots%d pickups%d inside_props%d fps%d | %s" % [tag, mode, UI.time_text(time),
+		level, player.hp, player.max_hp(), team_kills(), heroes.size(), enemies.count(), shots.list.size(), enemies.bullets.size(),
 		pickups.list.size(), stuck, Engine.get_frames_per_second(), ", ".join(inv)])
 
 ## A revival: clear the hero some room and carry on.

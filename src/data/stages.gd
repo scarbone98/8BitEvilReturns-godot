@@ -26,6 +26,7 @@ const STAGES := {
 			{"enemy": "shadowbeast", "from": 10.0, "to": 30.0, "rate": 0.5},
 			{"enemy": "ghost", "from": 12.0, "to": 30.0, "rate": 1.0},
 			{"enemy": "swampthing", "from": 14.0, "to": 30.0, "rate": 0.3},
+			{"enemy": "eye_stalk", "from": 2.5, "to": 30.0, "rate": 0.15},
 		],
 		"events": [
 			{"at": 2.0, "type": "ring", "enemy": "skull", "count": 16},
@@ -55,6 +56,7 @@ const STAGES := {
 			{"enemy": "skull", "from": 4.0, "to": 30.0, "rate": 1.8},
 			{"enemy": "swampthing", "from": 7.0, "to": 30.0, "rate": 0.5},
 			{"enemy": "ghost", "from": 8.0, "to": 30.0, "rate": 1.5},
+			{"enemy": "eye_stalk", "from": 1.0, "to": 30.0, "rate": 0.25},
 		],
 		"events": [
 			{"at": 1.5, "type": "ring", "enemy": "ghost", "count": 24},
@@ -80,6 +82,7 @@ const STAGES := {
 			{"enemy": "pumpkin", "from": 6.0, "to": 30.0, "rate": 2.0},
 			{"enemy": "werewolf", "from": 5.0, "to": 30.0, "rate": 0.8},
 			{"enemy": "shadowbeast", "from": 10.0, "to": 30.0, "rate": 0.6},
+			{"enemy": "gourd_spitter", "from": 1.5, "to": 30.0, "rate": 0.25},
 		],
 		"events": [
 			{"at": 1.5, "type": "ring", "enemy": "pumpkin", "count": 24},
@@ -104,6 +107,7 @@ const STAGES := {
 			{"enemy": "zombie", "from": 3.0, "to": 30.0, "rate": 0.8},
 			{"enemy": "shadowbeast", "from": 6.0, "to": 30.0, "rate": 0.5},
 			{"enemy": "ghost", "from": 9.0, "to": 30.0, "rate": 1.4},
+			{"enemy": "frost_totem", "from": 2.0, "to": 30.0, "rate": 0.22},
 		],
 		"events": [
 			{"at": 2.0, "type": "ring", "enemy": "ghost", "count": 24},
@@ -126,6 +130,7 @@ const STAGES := {
 			{"enemy": "skull", "from": 2.0, "to": 30.0, "rate": 1.0},
 			{"enemy": "ghost", "from": 4.0, "to": 30.0, "rate": 0.8},
 			{"enemy": "swampthing", "from": 8.0, "to": 30.0, "rate": 0.6},
+			{"enemy": "sludge_toad", "from": 1.5, "to": 30.0, "rate": 0.25},
 		],
 		"events": [
 			{"at": 2.0, "type": "ring", "enemy": "zombie", "count": 30},
@@ -147,6 +152,7 @@ const STAGES := {
 			{"enemy": "ghost", "from": 2.0, "to": 30.0, "rate": 0.8},
 			{"enemy": "werewolf", "from": 4.0, "to": 30.0, "rate": 0.7},
 			{"enemy": "swampthing", "from": 6.0, "to": 30.0, "rate": 0.5},
+			{"enemy": "eye_stalk", "from": 1.0, "to": 30.0, "rate": 0.3},
 		],
 		"events": [
 			{"at": 1.0, "type": "boss", "enemy": "shadowbeast"},
