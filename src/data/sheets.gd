@@ -73,5 +73,12 @@ const SHEETS := {
 	"lollipop": {"path": "lollipop", "frames": 4, "fps": 12},
 	"silver_stake": {"path": "silver_stake", "frames": 1, "fps": 1},
 	"royale_rang": {"path": "royale_rang", "frames": 1, "fps": 1},
+	"maul_slash": {"path": "maul_slash", "frames": 10, "fps": 30},
+	"storm_strike": {"path": "storm_strike", "frames": 9, "fps": 24},
+	"bone_hand": {"path": "bone_hand", "frames": 6, "fps": 12},
+	"eldritch_rift": {"path": "eldritch_rift", "frames": 10, "fps": 10},
+	"haunted_lamp": {"path": "haunted_lamp", "frames": 4, "fps": 6},
+	"tornado_hat": {"path": "tornado_hat", "frames": 4, "fps": 12},
+	"spirit_bat": {"path": "spirit_bat", "frames": 4, "fps": 12},
 	"crosshair": {"path": "crosshair_new", "frames": 1, "fps": 1},
 }
