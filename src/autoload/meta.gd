@@ -43,9 +43,14 @@ func is_unlocked(char_id: String) -> bool:
 	if dev_unlock_all:
 		return true
 	var c: Dictionary = Db.CHARACTERS[char_id]
-	if c.has("feat"):
-		return feats.has(c.feat)
+	if c.has("feat") and not feats.has(c.feat):
+		return false
 	return int(c.get("cost", 0)) == 0 or unlocked.has(char_id)
+
+## A hero's challenge is done (or it has none): it can be bought.
+func for_sale(char_id: String) -> bool:
+	var c: Dictionary = Db.CHARACTERS[char_id]
+	return not c.has("feat") or feats.has(c.feat) or dev_unlock_all
 
 ## Weapons, passives and stages marked `locked` need their feat first.
 func content_unlocked(id: String) -> bool:
@@ -99,7 +104,7 @@ func refund_powerups() -> void:
 
 func try_unlock(char_id: String) -> bool:
 	var c: Dictionary = Db.CHARACTERS[char_id]
-	if is_unlocked(char_id) or c.has("feat") or silver < int(c.cost):
+	if is_unlocked(char_id) or not for_sale(char_id) or silver < int(c.cost):
 		return false
 	silver -= int(c.cost)
 	unlocked.append(char_id)
@@ -202,7 +207,7 @@ func _feat_met(c: Dictionary, r: Dictionary) -> bool:
 # ---------------------------------------------------------------- Saving
 
 func to_dict() -> Dictionary:
-	return {"version": 1, "silver": silver, "best": best_seconds, "selected": selected, "stage": stage,
+	return {"version": 2, "silver": silver, "best": best_seconds, "selected": selected, "stage": stage,
 		"unlocked": unlocked, "feats": feats, "powerups": powerups, "totals": totals, "kinds": kinds,
 		"evolved": evolved, "seen": seen, "quests": quests, "cleared": cleared, "reapers": reapers, "nightmare": nightmare}
 
@@ -221,6 +226,13 @@ func _from_dict(d: Dictionary) -> void:
 	evolved = d.get("evolved", [])
 	seen = d.get("seen", [])
 	quests = d.get("quests", [])
+	# Version 1 saves: monster heroes were free once their feat was done.
+	# Anyone who had one then keeps it now that they're bought.
+	if int(d.get("version", 1)) < 2:
+		for cid in Db.CHARACTERS:
+			var ch: Dictionary = Db.CHARACTERS[cid]
+			if ch.has("feat") and feats.has(ch.feat) and not unlocked.has(cid):
+				unlocked.append(cid)
 	cleared = d.get("cleared", [])
 	reapers = d.get("reapers", [])
 	nightmare = bool(d.get("nightmare", false))

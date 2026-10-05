@@ -825,7 +825,10 @@ func _unlock_row(id: String) -> Control:
 		var d: Dictionary = Db.upgrade_def(id)
 		name = d.name
 		row.add_child(UI.icon(Db.icon_texture(d.icon), 16))
-	row.add_child(UI.label("UNLOCKED " + name, 8, UI.PALE))
+	var text := "UNLOCKED " + name
+	if Db.CHARACTERS.has(id) and int(Db.CHARACTERS[id].get("cost", 0)) > 0 and not Meta.is_unlocked(id):
+		text = "NEW HERO FOR SALE: %s (%d silver)" % [name, int(Db.CHARACTERS[id].cost)]
+	row.add_child(UI.label(text, 8, UI.PALE))
 	return row
 
 func _show_pause() -> void:

@@ -201,7 +201,7 @@ func show_select() -> void:
 			var c: Button = cards[id]
 			var ch: Dictionary = Db.CHARACTERS[id]
 			var open := Meta.is_unlocked(id)
-			var feat_locked: bool = ch.has("feat") and not open
+			var feat_locked: bool = not Meta.for_sale(id)
 			c.add_theme_stylebox_override("normal", UI.frame(id == Meta.selected))
 			(c.get_meta("view") as SheetView).tint = Color.WHITE if open else (Color(0, 0, 0, 0.85) if feat_locked else Color(0.25, 0.25, 0.3))
 			(c.get_meta("name") as Label).text = ch.name if not feat_locked else "???"
@@ -209,9 +209,10 @@ func show_select() -> void:
 			n.queue_free()
 		var sel: Dictionary = Db.CHARACTERS[Meta.selected]
 		var open := Meta.is_unlocked(Meta.selected)
-		if sel.has("feat") and not open:
+		if not Meta.for_sale(Meta.selected):
 			info_box.add_child(UI.label("???", 10, UI.GOLD))
-			info_box.add_child(UI.body("Unlock: " + Db.FEATS[sel.feat].desc, 12))
+			var price := int(sel.get("cost", 0))
+			info_box.add_child(UI.body("Unlock: " + Db.FEATS[sel.feat].desc + ("" if price == 0 else ", then buy for %d silver" % price), 12))
 			start.disabled = true
 			start.text = "LOCKED"
 		else:
