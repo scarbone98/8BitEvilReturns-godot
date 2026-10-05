@@ -246,6 +246,16 @@ func apply_dev_flags(f: Dictionary) -> void:
 		_prop_demo.call_deferred()
 	if f.has("die"):
 		_game_over.call_deferred()
+	if f.has("down"):
+		# Dev (host/server): knock co-op seat SEAT down after SECS: `down=SEAT,SECS`.
+		var sd: PackedStringArray = str(f.down).split(",")
+		get_tree().create_timer(float(sd[1]) if sd.size() > 1 else 5.0).timeout.connect(func():
+			var h = heroes.get(int(sd[0]))
+			if h and not h.dead:
+				print("[dev] knocking seat %d down" % h.slot)
+				h._invuln = 0.0
+				h.revivals = 0
+				h.take_hit(99999.0))
 	if f.has("levelup"):
 		_on_level_up.call_deferred()
 	if f.has("levelup_in"):

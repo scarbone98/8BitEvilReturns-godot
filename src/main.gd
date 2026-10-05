@@ -509,7 +509,9 @@ func _serve(f: Dictionary) -> void:
 		run.process_mode = Node.PROCESS_MODE_PAUSABLE
 		_swap(run)
 		run.start("joe", stage if Db.STAGES.has(stage) else "graveyard", {"mode": "server", "players": players})
-		print("[server] started with %d players" % players.size()))
+		print("[server] started with %d players" % players.size())
+		if f.has("down"):
+			run.apply_dev_flags(f))
 	Net.host_connect(str(f.get("room", "")), str(f.get("token", "")))
 
 func _start_coop(stage_id: String, players: Array) -> void:

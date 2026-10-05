@@ -90,22 +90,39 @@ func mirror_apply(entries: Array) -> void:
 			list.append({"type": MIRROR_TYPES[code], "pos": e[1], "t": t})
 	queue_redraw()
 
+# Redraw every frame (guests only get new positions per snapshot) so the
+# screen-pixel snapping below follows the camera.
+func _process(_delta: float) -> void:
+	queue_redraw()
+
 func _draw() -> void:
+	# The candy art is drawn at half size, so each texel is only a screen pixel
+	# or two. Drawn at fractional screen positions under the (unrounded) camera,
+	# nearest sampling picks different texels every frame and the candy
+	# shimmers. Snapping each item's corner to a whole screen pixel keeps the
+	# same texels on screen while the view slides.
+	var to_screen := get_viewport().get_final_transform() * get_global_transform_with_canvas()
+	var to_local := to_screen.affine_inverse()
 	for p in list:
 		var bob := sin(p.t * 4.0) * 1.0
 		if p.type == "candy":
 			var s := Db.sheet(Db.CANDY[p.tier].sheet)
 			var sz := 12.0  # half of the 24px candy art
-			draw_texture_rect_region(s._tex, Rect2(p.pos + Vector2(-sz * 0.5, -sz * 0.5 + bob), Vector2(sz, sz)), Db.frame_rect(s, p.t))
+			var at := _snap(p.pos + Vector2(-sz * 0.5, -sz * 0.5 + bob), to_screen, to_local)
+			draw_texture_rect_region(s._tex, Rect2(at, Vector2(sz, sz)), Db.frame_rect(s, p.t))
 			continue
 		var it: Dictionary = ITEMS[p.type]
 		if it.has("sheet"):
 			var s := Db.sheet(it.sheet)
-			draw_texture_rect_region(s._tex, Rect2(p.pos + Vector2(-8, -8 + bob), Vector2(16, 16)), Db.frame_rect(s, p.t))
+			var at := _snap(p.pos + Vector2(-8, -8 + bob), to_screen, to_local)
+			draw_texture_rect_region(s._tex, Rect2(at, Vector2(16, 16)), Db.frame_rect(s, p.t))
 		else:
 			var t := Db.tex(it.tex)
 			# Native size, or half for the 32px chest and basket: whole pixels.
 			var sz := Vector2(t.get_size())
 			if sz.x > 16.0:
 				sz *= 0.5
-			draw_texture_rect(t, Rect2(p.pos - sz * 0.5 + Vector2(0, bob), sz), false)
+			draw_texture_rect(t, Rect2(_snap(p.pos - sz * 0.5 + Vector2(0, bob), to_screen, to_local), sz), false)
+
+static func _snap(at: Vector2, to_screen: Transform2D, to_local: Transform2D) -> Vector2:
+	return to_local * (to_screen * at).round()
