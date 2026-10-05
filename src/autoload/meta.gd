@@ -19,6 +19,11 @@ var kinds := {}             # enemy -> defeated, all runs
 var evolved: Array = []     # evolutions/unions ever made
 var seen: Array = []        # weapons/passives ever picked up
 var quests: Array = []      # map quests completed (ids from quests.gd)
+var cleared: Array = []     # maps survived to 20:00: "stage", or "stage+nm" on Nightmare
+var reapers: Array = []     # maps where the Reaper was slain, same keys
+var nightmare := false      # play Nightmare (on maps where it's unlocked)
+const FIRST_CLEAR_SILVER := 500
+const FIRST_REAPER_SILVER := 1000
 var rev = null              # server revision of the account save; null before the first upload
 var _sync_queued := false
 var dev_unlock_all := false  # dev flag `unlockall`: everything open, nothing saved
@@ -150,8 +155,29 @@ func finish_run(r: Dictionary) -> Dictionary:
 	if not new_quests.is_empty() and is_crowned(stage_id):
 		crowned = true
 		silver += Db.QUEST_CROWN_SILVER
+	# 20:00 and the Reaper, once each per map and mode.
+	var key := stage_id + ("+nm" if r.get("nightmare", false) else "")
+	var first_clear := false
+	var first_reaper := false
+	if r.get("cleared", false) and not cleared.has(key):
+		cleared.append(key)
+		first_clear = true
+		silver += FIRST_CLEAR_SILVER
+	if int(r.get("reapers", 0)) > 0 and not reapers.has(key):
+		reapers.append(key)
+		first_reaper = true
+		silver += FIRST_REAPER_SILVER
 	save()
-	return {"best": is_best, "feats": new_feats, "unlocks": new_unlocks, "quests": new_quests, "crowned": crowned}
+	return {"best": is_best, "feats": new_feats, "unlocks": new_unlocks, "quests": new_quests, "crowned": crowned,
+		"first_clear": first_clear, "first_reaper": first_reaper, "nightmare": r.get("nightmare", false)}
+
+## Nightmare opens on a map once it's been survived to 20:00.
+func nightmare_unlocked(stage_id: String) -> bool:
+	return cleared.has(stage_id) or dev_unlock_all
+
+## Whether the next solo run on this map is Nightmare.
+func nightmare_on(stage_id: String) -> bool:
+	return nightmare and nightmare_unlocked(stage_id)
 
 ## Every quest of the map done.
 func is_crowned(stage_id: String) -> bool:
@@ -178,7 +204,7 @@ func _feat_met(c: Dictionary, r: Dictionary) -> bool:
 func to_dict() -> Dictionary:
 	return {"version": 1, "silver": silver, "best": best_seconds, "selected": selected, "stage": stage,
 		"unlocked": unlocked, "feats": feats, "powerups": powerups, "totals": totals, "kinds": kinds,
-		"evolved": evolved, "seen": seen, "quests": quests}
+		"evolved": evolved, "seen": seen, "quests": quests, "cleared": cleared, "reapers": reapers, "nightmare": nightmare}
 
 func _from_dict(d: Dictionary) -> void:
 	silver = int(d.get("silver", 0))
@@ -195,6 +221,9 @@ func _from_dict(d: Dictionary) -> void:
 	evolved = d.get("evolved", [])
 	seen = d.get("seen", [])
 	quests = d.get("quests", [])
+	cleared = d.get("cleared", [])
+	reapers = d.get("reapers", [])
+	nightmare = bool(d.get("nightmare", false))
 	if not Db.CHARACTERS.has(selected) or not is_unlocked(selected):
 		selected = "joe"
 	if not Db.STAGES.has(stage) or not content_unlocked(stage):
@@ -313,6 +342,10 @@ func _merge_remote(remote, remote_rev) -> void:
 		if not seen.has(id): seen.append(id)
 	for id in mine.get("quests", []):
 		if not quests.has(id): quests.append(id)
+	for id in mine.get("cleared", []):
+		if not cleared.has(id): cleared.append(id)
+	for id in mine.get("reapers", []):
+		if not reapers.has(id): reapers.append(id)
 	for id in mine.powerups:
 		powerups[id] = maxi(powerup_rank(id), int(mine.powerups[id]))
 	for k in totals:

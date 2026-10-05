@@ -409,8 +409,23 @@ func ops(view: Rect2) -> Array:
 				_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col, false, s.id, true)
 			_:
 				_sprite(out, s.sheet, frame, s.pos, s.rot, Vector2(sc, sc), col, false, s.id)
-	# Monster shots (host/solo simulate them; guests get them in these ops).
+	# Monster shots and Nightmare hazards (host/solo simulate them; guests get
+	# them in these ops).
 	_cur = {}
+	for hz in run.enemies.hazards:
+		if not cull.has_point(hz.pos):
+			continue
+		if hz.type == "puddle":
+			var fade: float = clampf((hz.life - hz.t) * 1.5, 0.0, 1.0) * clampf(hz.t * 3.0, 0.0, 1.0)
+			_emit(out, [OP_PUDDLE | GROUND, hz.pos, hz.radius, Color(0.3, 1.0, 0.2, fade)])
+		elif hz.t < hz.fuse:
+			# The warning: a red ring that blinks faster as it's about to go.
+			if int(hz.t * (8.0 + hz.t * 20.0)) % 2 == 0:
+				_emit(out, [OP_RING, hz.pos, hz.radius, Color(1.0, 0.25, 0.1, 0.9)])
+		else:
+			var bsh := Db.sheet("bomb_blast")
+			var f := mini(int((hz.t - hz.fuse) * bsh.fps), int(bsh.frames) - 1)
+			_sprite(out, "bomb_blast", f, hz.pos, 0.0, Vector2(hz.radius / 16.0, hz.radius / 16.0), Color.WHITE)
 	for b in run.enemies.bullets:
 		if cull.has_point(b.pos):
 			var bsh := Db.sheet(b.sheet)
@@ -479,6 +494,11 @@ func exec_ops(ci: CanvasItem, list_ops: Array, view: Rect2, ground: bool) -> voi
 				ci.draw_rect(view, Color(1, 1, 0.85, op[1]))
 			OP_PUDDLE:
 				var col: Color = op[3]
+				if col.g > col.r:
+					# Sewer ooze (Nightmare): bright green with a lighter sheen.
+					ci.draw_circle(op[1], op[2], Color(0.3, 0.75, 0.1, col.a * 0.75))
+					ci.draw_circle(op[1] + Vector2(-op[2] * 0.3, -op[2] * 0.3), op[2] * 0.4, Color(0.75, 1.0, 0.35, col.a * 0.6))
+					continue
 				var c := Color(0.55, 0.02, 0.06, col.a * 0.8) * Color(col.r, col.g, col.b, 1.0)
 				ci.draw_circle(op[1], op[2], c)
 				ci.draw_circle(op[1] + Vector2(-op[2] * 0.3, -op[2] * 0.3), op[2] * 0.35, Color(0.9, 0.2, 0.25, col.a * 0.5))

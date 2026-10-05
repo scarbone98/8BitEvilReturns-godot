@@ -162,6 +162,12 @@ func show_select() -> void:
 	box.add_child(stage_row)
 	var stage_about := UI.body("", 10, UI.DIM)
 	box.add_child(stage_about)
+	var mode_btn := UI.button("", func():
+		Meta.nightmare = not Meta.nightmare
+		Meta.save(), 20)
+	box.add_child(mode_btn)
+	var mode_l := UI.body("", 10, UI.DIM)
+	box.add_child(mode_l)
 	var stage_quests := VBoxContainer.new()
 	stage_quests.add_theme_constant_override("separation", 0)
 	box.add_child(stage_quests)
@@ -234,6 +240,17 @@ func show_select() -> void:
 		stage_l.text = "STAGE: " + st.name
 		var locked := Db.STAGES.keys().filter(func(sid): return not Meta.content_unlocked(sid)).size()
 		stage_about.text = st.get("about", "") + ("" if locked == 0 else "  (%d more to unlock)" % locked)
+		var cl: bool = Meta.cleared.has(Meta.stage)
+		var nm_open: bool = Meta.nightmare_unlocked(Meta.stage)
+		mode_btn.visible = nm_open
+		mode_btn.text = "NIGHTMARE  (TAP: NORMAL)" if Meta.nightmare_on(Meta.stage) else "NORMAL  (TAP: NIGHTMARE)"
+		var marks := []
+		if cl: marks.append("CLEARED")
+		if Meta.reapers.has(Meta.stage): marks.append("REAPER SLAIN")
+		if Meta.cleared.has(Meta.stage + "+nm"): marks.append("NIGHTMARE CLEARED")
+		if Meta.reapers.has(Meta.stage + "+nm"): marks.append("NIGHTMARE REAPER SLAIN")
+		mode_l.text = "  ".join(marks) if not marks.is_empty() else "Survive 20:00 to unlock NIGHTMARE."
+		mode_l.add_theme_color_override("font_color", UI.GOLD if cl else UI.DIM)
 		for n in stage_quests.get_children():
 			n.queue_free()
 		var list := Db.quests_for(Meta.stage)
@@ -521,6 +538,8 @@ func show_lobby() -> void:
 	box.add_child(how)
 	var vis_btn := UI.button("", func(): Net.set_public(not Net.public_room), 20)
 	box.add_child(vis_btn)
+	var nm_btn := UI.button("", func(): Net.pick({"nightmare": not Net.nightmare}), 20)
+	box.add_child(nm_btn)
 	var share_btn := UI.button("SHARE INVITE LINK", func(): Bridge.share_room(Net.code), 22)
 	box.add_child(share_btn)
 	var share_l := UI.body("", 10, UI.GOLD)
@@ -565,6 +584,10 @@ func show_lobby() -> void:
 		stage_l.text = "STAGE: " + Db.STAGES.get(Net.stage, Db.STAGES.graveyard).name
 		stage_btn.visible = Net.is_leader and not Net.starting
 		share_btn.visible = Net.code != "" and not Net.starting
+		# The leader can pick Nightmare on maps they've cleared; everyone sees which.
+		nm_btn.visible = Net.is_leader and not Net.starting and (Meta.nightmare_unlocked(Net.stage) or Net.nightmare)
+		nm_btn.text = "NIGHTMARE  (TAP: NORMAL)" if Net.nightmare else "NORMAL  (TAP: NIGHTMARE)"
+		stage_l.text = "STAGE: " + Db.STAGES.get(Net.stage, Db.STAGES.graveyard).name + ("  [NIGHTMARE]" if Net.nightmare else "")
 		vis_btn.text = "PUBLIC ROOM  (TAP: CODE ONLY)" if Net.public_room else "CODE ONLY  (TAP: MAKE PUBLIC)"
 		vis_btn.visible = Net.is_leader and not Net.starting
 		how.text = ("Anyone can join from BROWSE PUBLIC ROOMS, or with this code." if Net.public_room
@@ -593,7 +616,7 @@ func _serve(f: Dictionary) -> void:
 		var run := RunScript.new()
 		run.process_mode = Node.PROCESS_MODE_PAUSABLE
 		_swap(run)
-		run.start("joe", stage if Db.STAGES.has(stage) else "graveyard", {"mode": "server", "players": players})
+		run.start("joe", stage if Db.STAGES.has(stage) else "graveyard", {"mode": "server", "players": players}, Net.nightmare)
 		print("[server] started with %d players" % players.size())
 		if f.has("down"):
 			run.apply_dev_flags(f))
@@ -609,7 +632,7 @@ func _start_coop(stage_id: String, players: Array) -> void:
 	_swap(run)
 	if not Db.STAGES.has(stage_id):
 		stage_id = "graveyard"
-	run.start(Meta.selected, stage_id, {"mode": "host" if Net.is_host else "guest", "players": players})
+	run.start(Meta.selected, stage_id, {"mode": "host" if Net.is_host else "guest", "players": players}, Net.nightmare)
 	var f := Bridge.flags()
 	if f.has("autoplay"):
 		run.apply_dev_flags(f)
@@ -626,9 +649,14 @@ func _dev_coop(f: Dictionary) -> void:
 		var want := int(f.get("players", "2"))
 		var made_public := [false]
 		Net.room_changed.connect(func():
-			if f.has("public") and Net.code != "" and not made_public[0]:
+			if Net.code != "" and not made_public[0]:
 				made_public[0] = true
-				Net.set_public(true)
+				if f.has("public"):
+					Net.set_public(true)
+				if f.has("nightmare"):
+					Net.pick({"nightmare": true})
+				if f.has("stage"):
+					Net.pick({"stage": str(f.stage)})
 			if Net.code != "":
 				print("[room] ", Net.code, " players ", Net.players.size())
 			if Net.players.size() >= want and not Net.in_game:
@@ -649,7 +677,8 @@ func _start_run(dev := false) -> void:
 	var run := RunScript.new()
 	run.process_mode = Node.PROCESS_MODE_PAUSABLE
 	_swap(run)
-	run.start(Meta.selected, Meta.stage if not dev else str(Bridge.flags().get("stage", "graveyard")))
+	var sid: String = Meta.stage if not dev else str(Bridge.flags().get("stage", "graveyard"))
+	run.start(Meta.selected, sid, {}, Meta.nightmare_on(sid) if not dev else Bridge.flags().has("nightmare"))
 	if dev:
 		run.apply_dev_flags(Bridge.flags())
 	run.quit_to_menu.connect(show_select)

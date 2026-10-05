@@ -107,8 +107,10 @@ func max_hp() -> float:
 func magnet_radius() -> float:
 	return BASE_MAGNET * (1.0 + stats.magnet)
 
+var slowed := 0.0  # seconds left wading through ooze (Nightmare sewers)
+
 func move_speed() -> float:
-	return BASE_MOVE * (1.0 + stats.move)
+	return BASE_MOVE * (1.0 + stats.move) * (0.6 if slowed > 0.0 else 1.0)
 
 ## Touch: put a finger down anywhere and drag; the stick stays where the
 ## finger landed. Read in _input (not _unhandled_input) so a lift that lands
@@ -147,6 +149,7 @@ func step(delta: float, simulate := true, fire := false) -> void:
 	_anim += delta
 	_invuln = maxf(0.0, _invuln - delta)
 	_hurt_flash = maxf(0.0, _hurt_flash - delta)
+	slowed = maxf(0.0, slowed - delta)
 	if mode == "puppet":
 		queue_redraw()
 		return

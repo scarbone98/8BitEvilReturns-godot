@@ -94,5 +94,6 @@ const SHEETS := {
 	"seed_fire": {"path": "seed_fire", "frames": 2, "fps": 8},
 	"ice_shard": {"path": "ice_shard", "frames": 1, "fps": 1},
 	"goo_glob": {"path": "goo_glob", "frames": 2, "fps": 6},
+	"reaper": {"path": "reaper", "frames": 4, "fps": 5},
 	"crosshair": {"path": "crosshair_new", "frames": 1, "fps": 1},
 }

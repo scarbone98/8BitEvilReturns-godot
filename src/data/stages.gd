@@ -13,6 +13,10 @@ extends RefCounted
 #   one `around` kind at fixed `spots`), "line" (a solid run, `hole` chance of a
 #   gap), "aisle" (two facing columns, `middle` at the end), "scatter" (random).
 # props_per_chunk: [min, max] props tried per chunk by "scatter" (default [0, 3]).
+# twist: what this map adds on Nightmare (Run._twist_tick, Hud fog/darkness):
+#   graves (graves burst into zombies), fountains (blood fountains heal
+#   monsters), pumpkin_burst (pumpkins explode after dying), blizzard (snow
+#   fog), ooze (pipes pour slowing puddles), darkness (only lit areas show).
 # Modifiers: hp_per_minute (how fast monsters toughen), speed_mul (monster
 # speed), silver_bonus (extra silver at the end). `locked` stages need the feat
 # that lists them in progression.gd.
@@ -20,6 +24,7 @@ const STAGES := {
 	"graveyard": {
 		"name": "The Graveyard", "about": "Where it all started.", "ground": "gamebg", "hp_per_minute": 0.35, "max_alive": 600,
 		"obstacles": ["grave_1_small", "grave_2", "tree", "tree_2", "tree_3", "tree_4", "tree_5", "tree_6", "street_lamp", "mausoleum", "prop_angel", "prop_open_grave"],
+		"twist": {"type": "graves", "name": "Restless Graves", "desc": "Graves near you burst open."},
 		"layouts": [
 			{"t": "open", "w": 2.5},
 			{"t": "row", "w": 3, "kinds": ["grave_1_small", "grave_2"], "n": [3, 4], "gap": 30, "mix": true},
@@ -63,6 +68,7 @@ const STAGES := {
 		"props_per_chunk": [1, 4],
 		"obstacles": ["grave_1_small", "grave_2", "tree_5", "tree_6", "mausoleum", "prop_blood_fountain", "prop_gibbet", "prop_obelisk", "prop_angel", "prop_open_grave"],
 		"decor": ["blood", "prop_bones"],
+		"twist": {"type": "fountains", "name": "Blood Fountains", "desc": "Fountains heal the monsters near them."},
 		"layouts": [
 			{"t": "open", "w": 2},
 			{"t": "row", "w": 2, "kinds": ["grave_1_small", "grave_2"], "n": [3, 4], "gap": 30, "mix": true},
@@ -100,6 +106,7 @@ const STAGES := {
 		"ground": "ground_pumpkin", "hp_per_minute": 0.4, "max_alive": 600, "locked": true, "silver_bonus": 0.2,
 		"props_per_chunk": [1, 4],
 		"obstacles": ["tree_3", "tree_owl", "candybasket", "street_lamp", "prop_hay_bale", "prop_pumpkin_pile", "prop_corn", "prop_fence", "prop_scarecrow"],
+		"twist": {"type": "pumpkin_burst", "name": "Harvest Moon", "desc": "Pumpkins explode when they die. Step away!"},
 		"layouts": [
 			{"t": "open", "w": 2},
 			{"t": "grid", "w": 2, "kinds": ["prop_pumpkin_pile"], "cols": [2, 3], "rows": 2, "gap": [40, 34], "missing": 0.25},
@@ -136,6 +143,7 @@ const STAGES := {
 		"speed_mul": 1.15,
 		"props_per_chunk": [1, 4],
 		"obstacles": ["tree_5", "tree_6", "grave_1_small", "mausoleum", "prop_snow_pine", "prop_snowman", "prop_ice_grave", "prop_snow_angel"],
+		"twist": {"type": "blizzard", "name": "Blizzard", "desc": "The snow closes in."},
 		"layouts": [
 			{"t": "open", "w": 2},
 			{"t": "grove", "w": 3, "kinds": ["prop_snow_pine"], "n": [3, 5], "r": 46, "spacing": 22},
@@ -170,6 +178,7 @@ const STAGES := {
 		"props_per_chunk": [1, 4],
 		"obstacles": ["street_lamp", "prop_sewer_pipe", "prop_barrels", "prop_brick_pillar"],
 		"decor": ["sewer", "skull", "blood", "prop_bones"],
+		"twist": {"type": "ooze", "name": "Ooze", "desc": "The pipes pour slowing ooze."},
 		"layouts": [
 			{"t": "open", "w": 2},
 			{"t": "line", "w": 3, "kinds": ["prop_sewer_pipe"], "n": [2, 3], "gap": 40, "hole": 0.4, "always_hole_from": 3},
@@ -200,6 +209,7 @@ const STAGES := {
 		"props_per_chunk": [1, 4],
 		"obstacles": ["mausoleum", "grave_1_small", "prop_sarcophagus", "prop_broken_pillar", "prop_candelabra", "prop_open_grave"],
 		"decor": ["skull", "blood", "prop_bones"],
+		"twist": {"type": "darkness", "name": "Lights Out", "desc": "You only see what your light and the candles show."},
 		"layouts": [
 			{"t": "open", "w": 1.5},
 			{"t": "aisle", "w": 2.5, "kinds": ["prop_broken_pillar"], "n": [2, 3], "gap": [64, 40], "middle": ["prop_candelabra"]},

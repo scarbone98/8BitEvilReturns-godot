@@ -84,6 +84,8 @@ func _draw() -> void:
 	_text(Vector2(W - 6, 38), "LV %d" % run.level, 8, UI.GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
 	# Timer, the score.
 	_text(Vector2(W * 0.5, 44), UI.time_text(run.time), 12, UI.PALE, HORIZONTAL_ALIGNMENT_CENTER)
+	if run.nightmare:
+		_text(Vector2(W * 0.5, 54), "NIGHTMARE", 6, UI.RED, HORIZONTAL_ALIGNMENT_CENTER)
 	# Hearts at half size, seven to a row so they stay clear of the timer.
 	var hearts := ceili(p.max_hp() / HEART_HP)
 	var hp: float = p.hp

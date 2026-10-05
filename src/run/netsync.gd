@@ -212,6 +212,7 @@ func _send_snapshot_to(seat: int, h) -> void:
 		if e.boss[i] == 1: f |= 1
 		if e.flash[i] > 0.0: f |= 2
 		if e.frozen > 0.0: f |= 4
+		if e.elite[i] == 1: f |= 8
 		rows.put_u8(f)
 		_put_off(rows, e.pos[i], origin)
 		rows.put_u8(int(clampf(e.hp[i] / maxf(e.max_hp[i], 1.0), 0.0, 1.0) * 255))

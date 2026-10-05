@@ -56,6 +56,20 @@ var net_paused := false  # host: our own connection dropped, so the fight waits
 var _log_clock := 0.0  # guests: the bot's status log (the run clock follows the host's)
 var _modal: Control
 var autoplay := false
+# 20:00 clears the map: the field is wiped and the Reaper comes, then another
+# every minute. Nightmare is the harder version of a map you've cleared.
+const CLEAR_SECONDS := 1200.0
+const REAPER_EVERY := 60.0
+const NIGHTMARE := {"hp": 1.6, "spawn": 1.5, "speed": 1.15, "elite": 0.08, "events_at": 0.75, "silver": 1.5}
+var nightmare := false
+var cleared := false
+var reapers_slain := 0
+var _reaper_clock := 0.0
+var _reapers_sent := 0
+var twist := ""            # this map's Nightmare twist (stages.gd), "" when not Nightmare
+var _twist_clock := 0.0
+var _hp_mul_now := 1.0     # the spawns' current toughness, for monsters twists add
+var _twist_count := 0      # dev reports: heals, puddles or blasts so far
 # Map quests (see quests.gd): what the whole team did this run.
 var relic_found := false
 var relic_pos := Vector2.INF
@@ -89,8 +103,10 @@ func _is_local(h) -> bool:
 	return h != null and h.mode == "local"
 
 ## coop: {} for solo, or {mode: "host"|"guest", players: [{slot, name, hero}]}.
-func start(char_id: String, p_stage := "graveyard", coop := {}) -> void:
+func start(char_id: String, p_stage := "graveyard", coop := {}, p_nightmare := false) -> void:
 	mode = coop.get("mode", "solo")
+	nightmare = p_nightmare
+	twist = str(Db.STAGES[p_stage].get("twist", {}).get("type", "")) if nightmare else ""
 	stage_id = p_stage
 	stage = Db.STAGES[stage_id]
 	_spawn_acc.resize(stage.spawns.size())
@@ -150,12 +166,21 @@ func start(char_id: String, p_stage := "graveyard", coop := {}) -> void:
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(root)
+	if twist == "blizzard" or twist == "darkness":
+		var fog = preload("res://src/ui/fog.gd").new()
+		fog.run = self
+		fog.kind = twist
+		root.add_child(fog)  # under the HUD
 	hud = HudScript.new()
 	hud.run = self
 	hud.pause_pressed.connect(_show_pause)
 	root.add_child(hud)
 	obstacles.update_around(_hero_positions())
 	_place_relic()
+	if nightmare and Db.STAGES[stage_id].has("twist"):
+		var tw: Dictionary = Db.STAGES[stage_id].twist
+		hud.toast.call_deferred("NIGHTMARE: %s" % tw.name, UI.RED)
+		hud.toast.call_deferred(str(tw.desc), UI.RED)
 
 	if mode != "solo":
 		netsync = NetSyncScript.new()
@@ -345,6 +370,8 @@ func _tick(delta: float) -> void:
 		_guest_tick(delta)
 		return
 	time += delta
+	if not cleared and time >= CLEAR_SECONDS:
+		_clear_map()
 	for h in heroes.values():
 		h.step(delta)
 	_follow_camera()
@@ -364,6 +391,7 @@ func _tick(delta: float) -> void:
 	popups.step(delta)
 	_check_relic()
 	_check_quests(delta)
+	_ooze_check()
 	if _stuck_check:
 		_sample_stuck(delta)
 	var t3 := Time.get_ticks_usec()
@@ -383,6 +411,7 @@ func _guest_tick(delta: float) -> void:
 		_log_status("t")
 	for h in heroes.values():
 		h.step(delta, false, h == player)
+	_ooze_check()
 	_follow_camera()
 	shots.step(delta)  # our own predicted shots
 	popups.step(delta)
@@ -419,10 +448,18 @@ func _spawn(delta: float) -> void:
 	for h in heroes.values():
 		curse = maxf(curse, h.stats.curse)
 	var team := _team_scale()
-	var hp_mul := (1.0 + minute * float(stage.hp_per_minute)) * (1.0 + curse) * (1.0 + (team - 1.0) * 0.5)
-	var ramp := (1.0 + minute * 0.15) * (1.0 + curse) * team
+	if cleared:
+		_reaper_tick(delta)
+		return
+	_twist_tick(delta)
+	var nm: float = 1.0 if not nightmare else 0.0  # 1 normal, 0 nightmare (for the lerps below)
+	var hp_pm: float = float(stage.hp_per_minute) * (1.0 if nm == 1.0 else NIGHTMARE.hp)
+	var hp_mul := (1.0 + minute * hp_pm) * (1.0 + curse) * (1.0 + (team - 1.0) * 0.5)
+	var ramp := (1.0 + minute * 0.15) * (1.0 + curse) * team * (1.0 if nm == 1.0 else NIGHTMARE.spawn)
 	var cap: int = stage.max_alive if not dev_unlimited else 100000
-	var speed_mul: float = stage.get("speed_mul", 1.0)
+	var speed_mul: float = stage.get("speed_mul", 1.0) * (1.0 if nm == 1.0 else NIGHTMARE.speed)
+	var elite_chance: float = 0.0 if nm == 1.0 else NIGHTMARE.elite
+	_hp_mul_now = hp_mul
 	for i in stage.spawns.size():
 		var sp: Dictionary = stage.spawns[i]
 		if minute < sp.from or minute >= sp.to:
@@ -431,10 +468,10 @@ func _spawn(delta: float) -> void:
 		while _spawn_acc[i] >= 1.0:
 			_spawn_acc[i] -= 1.0
 			if enemies.count() < cap:
-				enemies.spawn(sp.enemy, _offscreen_point(Db.ENEMIES[sp.enemy].radius), hp_mul, false, speed_mul)
+				enemies.spawn(sp.enemy, _offscreen_point(Db.ENEMIES[sp.enemy].radius), hp_mul, false, speed_mul, randf() < elite_chance)
 	for i in stage.events.size():
 		var ev: Dictionary = stage.events[i]
-		if _events_done.has(i) or minute < ev.at:
+		if _events_done.has(i) or minute < float(ev.at) * (1.0 if nm == 1.0 else NIGHTMARE.events_at):
 			continue
 		_events_done[i] = true
 		match ev.type:
@@ -443,9 +480,11 @@ func _spawn(delta: float) -> void:
 					var r: float = h.view_size.length() * 0.55
 					for k in ev.count:
 						var at: Vector2 = h.position + Vector2.RIGHT.rotated(TAU * k / ev.count) * r
-						enemies.spawn(ev.enemy, obstacles.free_spot(at, Db.ENEMIES[ev.enemy].radius), hp_mul, false, speed_mul)
+						enemies.spawn(ev.enemy, obstacles.free_spot(at, Db.ENEMIES[ev.enemy].radius), hp_mul, false, speed_mul, randf() < elite_chance)
 			"boss":
-				enemies.spawn(ev.enemy, _offscreen_point(Db.ENEMIES[ev.enemy].radius * 2.0), hp_mul, true, speed_mul)
+				# Nightmare bosses come in pairs.
+				for k in (1 if nm == 1.0 else 2):
+					enemies.spawn(ev.enemy, _offscreen_point(Db.ENEMIES[ev.enemy].radius * 2.0), hp_mul, true, speed_mul)
 
 ## Just off a random hero's screen, never inside a grave, tree or building.
 func _offscreen_point(r := 8.0) -> Vector2:
@@ -469,17 +508,27 @@ func _contact_damage() -> void:
 
 # ---------------------------------------------------------------- Drops
 
-func _on_enemy_died(at: Vector2, kind: String, is_boss: bool, attacker: int) -> void:
+func _on_enemy_died(at: Vector2, kind: String, is_boss: bool, attacker: int, is_elite := false) -> void:
 	var h = heroes.get(attacker, player)
 	h.kills += 1
 	h.kind_kills[kind] = h.kind_kills.get(kind, 0) + 1
 	team_kinds[kind] = team_kinds.get(kind, 0) + 1
+	if twist == "pumpkin_burst" and (kind == "pumpkin" or kind == "gourd_spitter"):
+		enemies.add_blast(at, 18.0, 8.0)
+		_twist_count += 1
+	if kind == "reaper":
+		reapers_slain += 1
+		_tell_everyone("THE REAPER IS SLAIN!", UI.GOLD)
+		if autoplay:
+			print("[reaper] slain at %s by seat %d" % [UI.time_text(time), attacker])
 	if is_boss:
 		h.bosses += 1
 		boss_kinds[kind] = true
 		pickups.drop("chest", at)
 		return
 	var tier: int = Db.ENEMIES[kind].candy
+	if is_elite:
+		tier = mini(2, tier + 1)
 	if tier < 2 and randf() < 0.04:
 		tier += 1
 	pickups.drop_candy(at, tier)
@@ -847,7 +896,7 @@ func _log_status(tag: String) -> void:
 	for p in pickups.list:
 		if not obstacles.is_free(p.pos, 0.0):
 			stuck += 1
-	print("[%s] %s %s lv%d hp%d/%d kills%d heroes%d enemies%d shots%d monster_shots%d pickups%d inside_props%d fps%d | %s" % [tag, mode, UI.time_text(time),
+	print("[%s] %s%s %s lv%d hp%d/%d kills%d heroes%d enemies%d shots%d monster_shots%d pickups%d inside_props%d fps%d | %s" % [tag, mode, (" nightmare %s:%d" % [twist, _twist_count]) if nightmare else "", UI.time_text(time),
 		level, player.hp, player.max_hp(), team_kills(), heroes.size(), enemies.count(), shots.list.size(), enemies.bullets.size(),
 		pickups.list.size(), stuck, Engine.get_frames_per_second(), ", ".join(inv)])
 
@@ -989,9 +1038,120 @@ func _sample_stuck(delta: float) -> void:
 		print("[stuck] %s: %d of %d this sample; run so far %d of %d (%.1f%%); moved by the safety net %d; pickups %d" % [UI.time_text(time), stuck, checked,
 			_stuck_total.x, _stuck_total.y, 100.0 * _stuck_total.x / maxf(1.0, _stuck_total.y), enemies.relocated, pickups.list.size()])
 
+# ---------------------------------------------------------------- Nightmare twists
+
+const GRAVE_KINDS := ["grave_1_small", "grave_2", "prop_open_grave", "prop_ice_grave"]
+
+## Host/solo: the map's twist, on Nightmare (stops at 20:00).
+func _twist_tick(delta: float) -> void:
+	if twist == "":
+		return
+	_twist_clock -= delta
+	if _twist_clock > 0.0:
+		return
+	match twist:
+		"graves":
+			# A grave near a hero bursts: three zombies climb out.
+			_twist_clock = 5.0
+			var alive := living_heroes()
+			if alive.is_empty():
+				return
+			var h = alive.pick_random()
+			var near := []
+			for o in obstacles.props_in(Rect2(h.position - Vector2(220, 220), Vector2(440, 440))):
+				var d: float = o.pos.distance_to(h.position)
+				if GRAVE_KINDS.has(o.kind) and d > 50.0 and d < 220.0:
+					near.append(o)
+			if near.is_empty():
+				return
+			var g = near.pick_random()
+			if autoplay:
+				print("[twist] a grave bursts at %s" % UI.time_text(time))
+			for k in 3:
+				var at: Vector2 = g.pos + Vector2((k - 1) * 10, 10)
+				enemies.spawn("zombie", obstacles.free_spot(at, 6.0), _hp_mul_now, false, 1.0, randf() < NIGHTMARE.elite)
+		"fountains":
+			# Blood fountains heal the monsters around them, every second.
+			_twist_clock = 1.0
+			for o in _props_near_heroes("prop_blood_fountain", 300.0):
+				for i in enemies.query_circle(o.c, 70.0):
+					enemies.hp[i] = minf(enemies.max_hp[i], enemies.hp[i] + enemies.max_hp[i] * 0.04)
+					_twist_count += 1
+		"ooze":
+			# Pipes pour ooze that slows whoever wades through it.
+			_twist_clock = 4.0
+			for o in _props_near_heroes("prop_sewer_pipe", 260.0):
+				enemies.add_puddle(o.pos + Vector2(randf_range(-10, 10), randf_range(10, 22)), 16.0, 8.0)
+				_twist_count += 1
+		_:
+			_twist_clock = 9999.0  # blizzard and darkness are drawn by the HUD
+
+func _props_near_heroes(kind: String, reach: float) -> Array:
+	var seen := {}
+	var out := []
+	for h in living_heroes():
+		for o in obstacles.props_in(Rect2(h.position - Vector2(reach, reach), Vector2(reach * 2.0, reach * 2.0))):
+			if o.kind == kind and not seen.has(o.pos):
+				seen[o.pos] = true
+				out.append(o)
+	return out
+
+## This device's own hero in ooze is slowed. The host checks its puddles;
+## a guest checks the ones the host drew for it (it moves its hero itself).
+func _ooze_check() -> void:
+	if player == null or player.dead:
+		return
+	if is_guest():
+		for op in shots.remote_ops:
+			if int(op[0]) & 31 == shots.OP_PUDDLE and (op[3] as Color).g > (op[3] as Color).r \
+					and player.position.distance_to(op[1]) < float(op[2]) + 2.0:
+				player.slowed = 0.25
+				return
+		return
+	for hz in enemies.hazards:
+		if hz.type == "puddle" and player.position.distance_to(hz.pos) < hz.radius + 2.0:
+			player.slowed = 0.25
+			return
+
+# ---------------------------------------------------------------- 20:00
+
+## Host/solo: the map is cleared. Everything on the field is gone; the
+## Reaper comes (and another every minute).
+func _clear_map() -> void:
+	cleared = true
+	enemies.clear_all()
+	_tell_everyone("20:00 - MAP CLEARED. THE REAPER COMES...", UI.RED)
+	if autoplay:
+		print("[clear] %s: field wiped, %d monsters left" % [UI.time_text(time), enemies.count()])
+	_spawn_reaper()
+	_reaper_clock = REAPER_EVERY
+
+func _reaper_tick(delta: float) -> void:
+	_reaper_clock -= delta
+	if _reaper_clock <= 0.0:
+		_reaper_clock = REAPER_EVERY
+		_spawn_reaper()
+
+func _spawn_reaper() -> void:
+	# Each Reaper is half again as tough as the last.
+	var hp_mul := _team_scale() * (1.5 if nightmare else 1.0) * (1.0 + 0.5 * _reapers_sent)
+	_reapers_sent += 1
+	enemies.spawn("reaper", _offscreen_point(20.0), hp_mul, true, 1.0)
+	if autoplay:
+		print("[reaper] spawned at %s" % UI.time_text(time))
+
+## A toast on this screen and every co-op player's.
+func _tell_everyone(text: String, col: Color) -> void:
+	hud.toast(text, col)
+	if netsync:
+		for seat in heroes:
+			if not _is_local(heroes[seat]):
+				netsync.send_toast(seat, text)
+
 func summary_for(h) -> Dictionary:
 	var seconds := int(time)
-	var earned := int((h.silver_found + seconds / 10) * (1.0 + h.stats.greed) * (1.0 + stage.get("silver_bonus", 0.0)))
+	var earned := int((h.silver_found + seconds / 10) * (1.0 + h.stats.greed) * (1.0 + stage.get("silver_bonus", 0.0))
+		* (NIGHTMARE.silver if nightmare else 1.0))
 	var seen := []
 	for id in h.weapons: seen.append(id)
 	for id in h.passives: seen.append(id)
@@ -999,7 +1159,7 @@ func summary_for(h) -> Dictionary:
 		"candy": h.candy, "healed": int(h.healed), "evolutions": h.evolutions, "unions": h.unions,
 		"weapons_full": h.weapons_full, "silver": earned, "distance": int(h.distance / 16.0),
 		"char": h.char_id, "kinds": h.kind_kills, "evolved": h.made, "seen": seen, "team": heroes.size(),
-		"stage": stage_id, "quest": quest_state()}
+		"stage": stage_id, "quest": quest_state(), "cleared": cleared, "reapers": reapers_slain, "nightmare": nightmare}
 
 func _on_hero_down(h) -> void:
 	if ended:
@@ -1039,7 +1199,10 @@ func show_results(r: Dictionary) -> void:
 		if autoplay:
 			print("[result] ", result, " silver=", Meta.silver)
 		Bridge.report_death(r.seconds)
-	var box := _panel("YOU DIED" if mode == "solo" else "THE HORDE WINS", UI.RED)
+	var title := "YOU DIED" if mode == "solo" else "THE HORDE WINS"
+	if r.get("cleared", false):
+		title = "THE REAPER WINS" if int(r.get("reapers", 0)) == 0 else "YOU FELL... A LEGEND"
+	var box := _panel(title, UI.RED)
 	box.add_child(UI.label(UI.time_text(r.seconds), 24, UI.PALE))
 	if result.best:
 		box.add_child(UI.label("NEW BEST!", 8, UI.GOLD))
@@ -1055,6 +1218,14 @@ func show_results(r: Dictionary) -> void:
 				box.add_child(UI.label("QUEST: %s  +%d silver" % [q.name, q.silver], 8, UI.GOLD))
 	if result.get("crowned", false):
 		box.add_child(UI.label("MAP CROWNED!  +%d silver" % Db.QUEST_CROWN_SILVER, 10, UI.GOLD))
+	if r.get("cleared", false):
+		box.add_child(UI.label(("NIGHTMARE CLEARED!" if r.get("nightmare", false) else "MAP CLEARED!")
+			+ ("  +%d silver" % Meta.FIRST_CLEAR_SILVER if result.get("first_clear", false) else ""), 10, UI.GOLD))
+	if int(r.get("reapers", 0)) > 0:
+		box.add_child(UI.label("REAPER SLAIN x%d!" % int(r.reapers)
+			+ ("  +%d silver" % Meta.FIRST_REAPER_SILVER if result.get("first_reaper", false) else ""), 10, UI.GOLD))
+	if result.get("first_clear", false) and not r.get("nightmare", false):
+		box.add_child(UI.label("NIGHTMARE unlocked on this map", 8, UI.RED))
 	var again := UI.button("PLAY AGAIN", func():
 		get_tree().paused = false
 		Net.leave()

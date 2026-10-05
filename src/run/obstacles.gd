@@ -326,6 +326,14 @@ func update_around(centers: Array) -> void:
 
 func _draw() -> void:
 	var view: Rect2 = run.view_rect().grow(32)
+	# Nightmare's blood fountains glow while they heal the monsters around them.
+	if run.twist == "fountains":
+		var pulse := 0.18 + sin(_anim * 4.0) * 0.08
+		for props in _chunks.values():
+			for o in props:
+				if o.kind == "prop_blood_fountain" and view.grow(70).has_point(o.pos):
+					draw_circle(o.c, 70.0, Color(0.85, 0.05, 0.1, pulse))
+					draw_arc(o.c, 70.0, 0.0, TAU, 48, Color(1.0, 0.2, 0.25, pulse * 2.5), 1.0)
 	for props in _chunks.values():
 		for o in props:
 			if o.get("decor", false) and view.has_point(o.pos):

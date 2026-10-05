@@ -183,6 +183,52 @@ def goo_glob():
         frames.append(im)
     return frames
 
+# ---------------------------------------------------------------- The Reaper
+def reaper():
+    """Death himself: a floating black-robed skeleton with a huge scythe,
+    eyes burning, robe tatters drifting. 36x40, 4 frames (drawn at boss size)."""
+    robe, robe2, robe3 = hexc("2a2236"), hexc("1a1424"), hexc("0c0812")
+    bone, bone2 = hexc("efe8d6"), hexc("b8ae96")
+    eye = hexc("ff3b3b")
+    wood, blade, blade2 = hexc("5a3a24"), hexc("d8dde6"), hexc("8d96a8")
+    frames = []
+    for k in range(4):
+        im = new(36, 40)
+        bob = [0, -1, -2, -1][k]
+        # scythe behind: a long shaft and a curved blade over his head
+        line(im, 29, 38 + bob, 25, 3 + bob, wood)
+        line(im, 30, 38 + bob, 26, 3 + bob, hexc("3a2414"))
+        for i in range(18):
+            t = i / 17.0
+            x = 25 - t * 21
+            y = 3 + bob + math.sin(t * math.pi) * -1 + t * t * 7
+            put(im, x, y, blade); put(im, x, y + 1, blade); put(im, x + 1, y + 2, blade2)
+        # robe: a hooded bell, tatters at the hem waving
+        for y in range(4, 36):
+            half = 5 + (y - 4) * 0.33 if y > 10 else 6 - abs(y - 7) * 0.3
+            for x in range(int(17 - half), int(17 + half) + 1):
+                c = robe if x < 15 else robe2
+                if y > 30 and (x + y + k) % 3 == 0:
+                    continue  # tatters
+                put(im, x, y + bob, c)
+        for x in range(9, 26, 2):  # ragged hem
+            put(im, x, 36 + bob + (x + k) % 2, robe2)
+        # hood opening and skull
+        for y in range(6, 14):
+            for x in range(13, 21):
+                if (x + 0.5 - 17) ** 2 / 12 + (y + 0.5 - 10) ** 2 / 14 < 1:
+                    put(im, x, y + bob, robe3)
+        rows(im, 14, 8 + bob, [".bbbb.", "bebbeb", "bbbbbb", ".bmbm.", "..bb.."], {"b": bone, "e": eye, "m": bone2})
+        # bony hand on the shaft
+        rows(im, 25, 18 + bob, ["bb", "bb"], {"b": bone})
+        line(im, 19, 17 + bob, 25, 19 + bob, robe2)
+        # eye glow flicker
+        if k % 2 == 0:
+            put(im, 15, 9 + bob, hexc("ff7a3a")); put(im, 18, 9 + bob, hexc("ff7a3a"))
+        outline(im, hexc("000000"))
+        frames.append(im)
+    return frames
+
 if __name__ == "__main__":
     A.save(sheet(eye_stalk()), "eye_stalk")
     A.save(sheet(gourd_spitter()), "gourd_spitter")
@@ -192,3 +238,4 @@ if __name__ == "__main__":
     A.save(sheet(seed_fire()), "seed_fire")
     A.save(sheet(ice_shard()), "ice_shard")
     A.save(sheet(goo_glob()), "goo_glob")
+    A.save(sheet(reaper()), "reaper")

@@ -36,6 +36,7 @@ var host_slot := 0            # which seat runs the fight (the server's own seat
 var players: Array = []        # [{slot, name, hero, away}]
 var stage := "graveyard"
 var public_room := false       # listed for anyone to join (else code only)
+var nightmare := false         # the leader picked Nightmare for this room
 var in_game := false
 var starting := false          # the leader pressed start; waiting for the game to begin
 var reconnecting := false
@@ -119,6 +120,7 @@ func _reset() -> void:
 	host_slot = 0
 	players = []
 	public_room = false
+	nightmare = false
 	in_game = false
 	reconnecting = false
 	_was_open = false
@@ -282,6 +284,7 @@ func _on_text(text: String) -> void:
 			players = m.players
 			stage = str(m.get("stage", "graveyard"))
 			public_room = bool(m.get("public", false))
+			nightmare = bool(m.get("nightmare", false))
 			starting = bool(m.get("starting", false))
 			_save_session()
 			if reconnecting:
@@ -297,6 +300,7 @@ func _on_text(text: String) -> void:
 			in_game = true
 			starting = false
 			stage = str(m.stage)
+			nightmare = bool(m.get("nightmare", nightmare))
 			players = m.players
 			# Who runs the fight: the server's game copy, or (if it couldn't
 			# start one) the player who made the room.

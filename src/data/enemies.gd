@@ -21,6 +21,10 @@ const ENEMIES := {
 		"shoot": {"every": 3.2, "speed": 58.0, "damage": 7.0, "range": 210.0, "sheet": "ice_shard", "point": true}},
 	"sludge_toad": {"sheet": "sludge_toad", "hp": 40.0, "speed": 0.0, "damage": 6.0, "radius": 8.0, "candy": 1, "faces": 1, "rooted": true,
 		"shoot": {"every": 3.0, "speed": 50.0, "damage": 6.0, "range": 190.0, "sheet": "goo_glob"}},
+	# Comes at 20:00 (see Run.CLEAR_SECONDS), always as a boss: flies over
+	# props, shrugs off freezes and knockback, hits hard, and keeps coming.
+	"reaper": {"sheet": "reaper", "hp": 4000.0, "speed": 85.0, "damage": 40.0, "radius": 10.0, "candy": 2, "faces": -1,
+		"fly": true, "unstoppable": true},
 	"swampthing": {"sheet": "swampthing", "hp": 160.0, "speed": 28.0, "damage": 22.0, "radius": 12.0, "candy": 2, "faces": 1},
 }
 
