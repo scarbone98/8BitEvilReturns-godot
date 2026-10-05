@@ -238,13 +238,13 @@ def royale_rang():
 
 def base_cards():
     t = {}
-    t["onion_ring_skill"] = on_card(frame("onion", 13, 0), (hexc("1a0a1c"), hexc("3d1640"), hexc("62225f")), hexc("0a030b"))
+    t["onion_ring_skill"] = on_card(frame("onion", 13, 0), (hexc("1a0a1c"), hexc("3d1640"), hexc("62225f")), hexc("0a030b"), box=62)
     t["heartbeat_skill"] = on_card(frame("heartbeat", 8, 0), (hexc("22050a"), hexc("4d0c16"), hexc("7a1424")), hexc("0d0204"))
     t["holy_cross_skill"] = on_card(frame("holy_cross", 10, 0), (hexc("221a05"), hexc("4d3a0c"), hexc("7a5e14")), hexc("0d0902"))
     t["pumpkin_bomb_skill"] = on_card(frame("pumpkin", 6, 0), (hexc("2a1304"), hexc("5a2a08"), hexc("8a4510")), hexc("120702"))
     t["grave_hand_skill"] = on_card(frame("hand", 4, 3), (hexc("0c1a12"), hexc("1d3a28"), hexc("2f5c40")), hexc("040a06"))
-    t["tentacle_skill"] = on_card(frame("tentacle", 12, 6), (hexc("0a1418"), hexc("173238"), hexc("255058")), hexc("030709"))
-    t["street_lamp_skill"] = on_card(frame("street_lamp", 4, 0), (hexc("0e0f1c"), hexc("22264a"), hexc("3a3f78")), hexc("05060c"))
+    t["tentacle_skill"] = on_card(frame("tentacle", 12, 6), (hexc("0a1418"), hexc("173238"), hexc("255058")), hexc("030709"), box=62)
+    t["street_lamp_skill"] = on_card(frame("street_lamp", 4, 0), (hexc("0e0f1c"), hexc("22264a"), hexc("3a3f78")), hexc("05060c"), box=62)
     t["merchant_hat_skill"] = on_card(frame("merchant_hat", 1, 0), (hexc("0e1024"), hexc("232858"), hexc("363f88")), hexc("05060f"))
     # Blood Trail: drops falling into a spreading puddle
     it = new(64, 64)
@@ -345,15 +345,18 @@ def evo_cards():
     t["tell_tale_heart_skill"] = item_on_card(card(hexc("1c0606"), hexc("3f0c0c"), hexc("651414")), it, hexc("0a0202"))
 
     # Divine Judgment: the cross descending in a beam of light
-    it = new(64, 64)
+    c = card(hexc("231a04"), hexc("4d3a0c"), hexc("806212"))
     for y in range(64):
         for x in range(64):
-            w = 6 + y * 0.18
-            if abs(x + 0.5 - 32) < w and (x + y) % 2 == 0:
-                put(it, x, y, hexc("fff2a8", 160))
-    cr = fit(frame("holy_cross", 10, 0), 44)
-    paste(it, cr, 32 - cr.width // 2, 30 - cr.height // 2)
-    t["divine_judgment_skill"] = on_card(it, (hexc("231a04"), hexc("4d3a0c"), hexc("806212")), hexc("0d0902"), box=62, outline_it=False)
+            w = 6 + y * 0.2
+            if abs(x + 0.5 - 32) < w and (x + y) % 2 == 0 and c.getpixel((x, y))[3]:
+                put(c, x, y, hexc("fff2a8"))
+    cr = fit(frame("holy_cross", 10, 0), 46)
+    big = new(cr.width + 2, cr.height + 2)
+    paste(big, cr, 1, 1)
+    cr = outline(big, hexc("0d0902"))
+    paste(c, cr, 32 - cr.width // 2, 32 - cr.height // 2)
+    t["divine_judgment_skill"] = c
 
     t["sugar_rush_skill"] = on_card(compose((scaled(lollipop()[0], 3), 14, 6), (scaled(A.candy_shot()[0], 2), 6, 44), (scaled(A.candy_shot()[1], 2), 34, 48)),
                                     (hexc("2a0820"), hexc("5a1046"), hexc("8a1a6c")), hexc("12030e"), box=56)
