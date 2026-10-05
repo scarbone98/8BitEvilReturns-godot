@@ -24,6 +24,8 @@ func _ready() -> void:
 		_dev_coop(f)
 	elif f.has("autoplay") or f.has("dev"):
 		_start_run(true)
+	elif f.has("join") and str(f.join).length() == 4:
+		_join_from_link(str(f.join).to_upper())
 	else:
 		show_title()
 
@@ -482,6 +484,18 @@ func show_browse() -> void:
 	box.add_child(UI.button("REFRESH", func(): refresh.call(), 20))
 	box.add_child(UI.button("BACK", func(): show_coop(), 20))
 
+## Opened from an invite link (?join=CODE): straight into that room. Waits a
+## moment for the site to sign us in, so the lobby shows the player's name.
+func _join_from_link(room_code: String) -> void:
+	_watch_net()
+	show_lobby()  # shows CONNECTING... until the room answers
+	if not Bridge.is_signed_in() and Bridge.is_web() and Bridge.in_frame():
+		var waited := 0.0
+		while waited < 2.0 and not Bridge.is_signed_in():
+			await get_tree().create_timer(0.1).timeout
+			waited += 0.1
+	Net.join(room_code, _my_name(), Meta.selected)
+
 var _net_watched := false
 
 ## Lobby and run hooks, connected once.
@@ -507,6 +521,17 @@ func show_lobby() -> void:
 	box.add_child(how)
 	var vis_btn := UI.button("", func(): Net.set_public(not Net.public_room), 20)
 	box.add_child(vis_btn)
+	var share_btn := UI.button("SHARE INVITE LINK", func(): Bridge.share_room(Net.code), 22)
+	box.add_child(share_btn)
+	var share_l := UI.body("", 10, UI.GOLD)
+	box.add_child(share_l)
+	var on_share := func(how: String):
+		if not is_instance_valid(share_l):
+			return
+		share_l.text = {"shared": "Invite sent!", "copied": "Link copied! Paste it to your friends."}.get(how,
+			"Couldn't copy. Send them: " + Bridge.INVITE_BASE + Net.code)
+	Bridge.share_done.connect(on_share)
+	share_l.tree_exiting.connect(func(): Bridge.share_done.disconnect(on_share))
 	var list := VBoxContainer.new()
 	list.add_theme_constant_override("separation", 3)
 	list.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -539,6 +564,7 @@ func show_lobby() -> void:
 			list.add_child(row)
 		stage_l.text = "STAGE: " + Db.STAGES.get(Net.stage, Db.STAGES.graveyard).name
 		stage_btn.visible = Net.is_leader and not Net.starting
+		share_btn.visible = Net.code != "" and not Net.starting
 		vis_btn.text = "PUBLIC ROOM  (TAP: CODE ONLY)" if Net.public_room else "CODE ONLY  (TAP: MAKE PUBLIC)"
 		vis_btn.visible = Net.is_leader and not Net.starting
 		how.text = ("Anyone can join from BROWSE PUBLIC ROOMS, or with this code." if Net.public_room

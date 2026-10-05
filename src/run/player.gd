@@ -60,6 +60,8 @@ var _invuln := 0.0
 var _anim := 0.0
 var _hurt_flash := 0.0
 var dead := false
+var god := false  # dev: takes no damage (stuck tests)
+var stand := false  # dev: the bot picks cards but never walks
 var autopilot := false
 
 # Touch joystick: drag anywhere on screen.
@@ -161,7 +163,7 @@ func step(delta: float, simulate := true, fire := false) -> void:
 		if _touch_id != -1 and _touch_vec.length() > 0.15:
 			dir = _touch_vec.limit_length(1.0)
 		if autopilot:
-			dir = _bot_dir()
+			dir = Vector2.ZERO if stand else _bot_dir()
 		moving = dir.length() > 0.1
 		if moving:
 			facing = dir.normalized()
@@ -203,7 +205,7 @@ func _bot_dir() -> Vector2:
 	return Vector2.RIGHT.rotated(_anim * 0.4) * 0.5
 
 func take_hit(amount: float) -> void:
-	if _invuln > 0.0 or dead or away:
+	if _invuln > 0.0 or dead or away or god:
 		return
 	_invuln = HIT_INVULN
 	_hurt_flash = 0.2

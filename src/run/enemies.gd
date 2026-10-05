@@ -35,6 +35,21 @@ var uid := PackedInt32Array()
 var boss := PackedByteArray()
 var kidx := PackedInt32Array()  # index into the _kind_* tables
 var shoot_t := PackedFloat32Array()  # seconds until a shooter fires again
+# Walking round props: when a prop pushes a monster back the way it came, it
+# slides along it (detour_dir) for a moment instead of pressing into it.
+var detour_t := PackedFloat32Array()
+var detour_dir := PackedVector2Array()
+var detour_from := PackedVector2Array()  # where it was when this way round was chosen
+var detour_age := PackedFloat32Array()   # seconds since then
+# Safety net: a walker that hasn't got anywhere in a while (wedged somewhere
+# the steering can't solve) is moved to a fresh spot just off screen near the
+# heroes, so nothing is ever left stuck.
+var prog_from := PackedVector2Array()
+var prog_t := PackedFloat32Array()
+var prog_strikes := PackedByteArray()
+var prog_dist := PackedFloat32Array()  # distance to its target when the window started
+var prog_det := PackedFloat32Array()   # seconds of the window spent going round props
+var relocated := 0  # how many the safety net has moved (dev reports)
 ## Monster shots in flight (host/solo): {pos, vel, t, life, damage, sheet, rot}.
 ## Guests see them through the shots' draw ops.
 var bullets: Array[Dictionary] = []
@@ -81,6 +96,15 @@ func spawn(k: String, at: Vector2, hp_mul := 1.0, is_boss := false, speed_mul :=
 	boss.append(1 if is_boss else 0)
 	kidx.append(_kinds.find(k))
 	shoot_t.append(randf_range(0.5, 1.0) * float(d.get("shoot", {}).get("every", 1.0)))
+	detour_t.append(0.0)
+	detour_dir.append(Vector2.ZERO)
+	detour_from.append(at)
+	detour_age.append(0.0)
+	prog_from.append(at)
+	prog_t.append(0.0)
+	prog_strikes.append(0)
+	prog_dist.append(INF)
+	prog_det.append(0.0)
 	_next_uid += 1
 
 func _remove(i: int) -> void:
@@ -92,7 +116,13 @@ func _remove(i: int) -> void:
 		damage[i] = damage[last]; radius[i] = radius[last]; scale_[i] = scale_[last]
 		anim[i] = anim[last]; flash[i] = flash[last]; uid[i] = uid[last]; boss[i] = boss[last]
 		kidx[i] = kidx[last]; shoot_t[i] = shoot_t[last]
+		detour_t[i] = detour_t[last]; detour_dir[i] = detour_dir[last]; detour_from[i] = detour_from[last]; detour_age[i] = detour_age[last]
+		prog_from[i] = prog_from[last]; prog_t[i] = prog_t[last]; prog_strikes[i] = prog_strikes[last]
+		prog_dist[i] = prog_dist[last]; prog_det[i] = prog_det[last]
 	kidx.remove_at(last); shoot_t.remove_at(last)
+	detour_t.remove_at(last); detour_dir.remove_at(last); detour_from.remove_at(last); detour_age.remove_at(last)
+	prog_from.remove_at(last); prog_t.remove_at(last); prog_strikes.remove_at(last)
+	prog_dist.remove_at(last); prog_det.remove_at(last)
 	kind.remove_at(last); pos.remove_at(last); knock.remove_at(last)
 	hp.remove_at(last); max_hp.remove_at(last); speed.remove_at(last)
 	damage.remove_at(last); radius.remove_at(last); scale_.remove_at(last)
@@ -254,6 +284,35 @@ func step(delta: float, targets: PackedVector2Array, view: Rect2) -> void:
 			pos[i] = goal + to / dist * (far * 0.6)
 			continue
 		var ki := kidx[i]
+		if moving and _kind_rooted[ki] == 0 and boss[i] == 0:
+			prog_t[i] += dt
+			if detour_t[i] > 0.0:
+				prog_det[i] += dt
+			if prog_t[i] > 3.0:
+				# Stuck: in 3s it either barely moved, or spent most of the
+				# time going round props without getting any closer. (Just not
+				# getting closer isn't enough: a hero running away does that.)
+				# Off screen, move it now; on screen, give it one more go first.
+				# (Wedged only counts against a prop: one held up in a crowd of
+				# other monsters isn't stuck, it's queueing.)
+				var wedged: bool = p.distance_to(prog_from[i]) < 10.0 and not obstacles.is_free(p, radius[i] * 0.6 + 3.0)
+				var circling: bool = prog_det[i] > 1.5 and dist > prog_dist[i] - 8.0
+				if (wedged or circling) and dist > 40.0:
+					prog_strikes[i] += 1
+					if not onscreen or prog_strikes[i] >= 2:
+						var ring := (view.size * 0.5).length() + 30.0
+						p = obstacles.free_spot(goal + Vector2.RIGHT.rotated(randf() * TAU) * ring, radius[i])
+						pos[i] = p
+						knock[i] = Vector2.ZERO
+						detour_t[i] = 0.0
+						prog_strikes[i] = 0
+						relocated += 1
+				else:
+					prog_strikes[i] = 0
+				prog_from[i] = p
+				prog_t[i] = 0.0
+				prog_dist[i] = dist
+				prog_det[i] = 0.0
 		if _kind_rooted[ki] == 1:
 			# Rooted: stays put; shooters fire at whoever is in range.
 			var sh: Dictionary = _kind_shoot[ki]
@@ -266,6 +325,10 @@ func step(delta: float, targets: PackedVector2Array, view: Rect2) -> void:
 		var v := Vector2.ZERO
 		if moving and dist > 1.0:
 			v = to / dist * speed[i]
+			if detour_t[i] > 0.0:
+				detour_t[i] -= dt
+				detour_age[i] += dt
+				v = (to / dist * 0.15 + detour_dir[i]).normalized() * speed[i]
 		# Separation from a few enemies sharing this cell.
 		if onscreen and i < _next.size():
 			var mx := _cx[i]
@@ -289,7 +352,36 @@ func step(delta: float, targets: PackedVector2Array, view: Rect2) -> void:
 		p += v * dt
 		# Obstacles are checked for a third of the enemies each frame.
 		if i % 3 == stagger and _kind_fly[kidx[i]] == 0:
+			var before := p
 			p = obstacles.push_out(p, radius[i] * 0.6)
+			var push := p - before
+			if push.length_squared() > 0.01 and dist > 1.0 and moving:
+				var want := to / dist
+				if push.dot(want) < -0.3 * push.length():
+					# Pushed back the way it wants to go: slide along the prop,
+					# on the side that turns toward the target (alternating by
+					# monster when it's dead ahead, so a crowd splits round it).
+					var t := push.orthogonal().normalized()
+					if detour_t[i] > 0.0:
+						# Already going round: keep the same way...
+						if detour_dir[i].dot(t) < 0.0:
+							t = -t
+						# ...unless it has got nowhere in 0.6s (a dead end): turn back.
+						if detour_age[i] > 0.6:
+							if p.distance_to(detour_from[i]) < 5.0:
+								t = -t
+							detour_from[i] = p
+							detour_age[i] = 0.0
+					else:
+						var along := t.dot(want)
+						if absf(along) < 0.1:
+							t *= 1.0 if uid[i] % 2 == 0 else -1.0
+						elif along < 0.0:
+							t = -t
+						detour_from[i] = p
+						detour_age[i] = 0.0
+					detour_dir[i] = t
+					detour_t[i] = 0.7
 		pos[i] = p
 	_step_bullets(delta)
 	queue_redraw()
@@ -330,6 +422,8 @@ func mirror_set(entries: Array, delta: float) -> void:
 		old_anim[uid[i]] = anim[i]
 	var n := entries.size()
 	pos.resize(n); anim.resize(n); uid.resize(n); kidx.resize(n); scale_.resize(n); shoot_t.resize(n)
+	detour_t.resize(n); detour_dir.resize(n); detour_from.resize(n); detour_age.resize(n)
+	prog_from.resize(n); prog_t.resize(n); prog_strikes.resize(n); prog_dist.resize(n); prog_det.resize(n)
 	flash.resize(n); boss.resize(n); hp.resize(n); max_hp.resize(n); radius.resize(n); knock.resize(n)
 	kind.clear()
 	for i in n:

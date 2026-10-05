@@ -6,6 +6,7 @@ extends Node
 ##   game -> page  {type: "PLAYER_DIED", score}
 ## Outside a browser (editor, desktop) everything here is a no-op.
 
+signal share_done(how: String)  # after share_room: "shared", "copied" or "failed"
 signal signed_in
 
 const API := "/8bitevilreturns"
@@ -59,6 +60,9 @@ func _handle_message(args: Array) -> void:
 	var data = event.data
 	if data == null or typeof(data) != TYPE_OBJECT:
 		return
+	if str(data.type) == "SHARE_DONE":
+		share_done.emit(str(data.how))
+		return
 	if str(data.type) != "SCARATHON_USER":
 		return
 	user_id = str(data.userId)
@@ -66,6 +70,38 @@ func _handle_message(args: Array) -> void:
 	api_base = str(data.apiBaseUrl).trim_suffix("/")
 	signed_in.emit()
 	_fetch_name()
+
+## The invite link for a co-op room. Opens the game on the Scareathon site,
+## signed in, straight into joining the room.
+const INVITE_BASE := "https://scareathon.rip/8ber?room="
+
+## Shares (phones) or copies a room's invite link. Inside the site the page
+## does it (it's allowed to use the share sheet and clipboard; this frame may
+## not be); played directly, we try ourselves. share_done says how it went:
+## "shared", "copied" or "failed".
+func share_room(code: String) -> void:
+	if not is_web():
+		DisplayServer.clipboard_set(INVITE_BASE + code)
+		share_done.emit.call_deferred("copied")
+		return
+	if in_frame():
+		_post_to_page({"type": "SHARE_LINK", "code": code})
+		return
+	var url := INVITE_BASE + code
+	_share_cb = JavaScriptBridge.create_callback(func(args): share_done.emit(str(args[0])))
+	JavaScriptBridge.get_interface("window")["__ber_share_done"] = _share_cb
+	JavaScriptBridge.eval("""(function(u){
+		var done = function(h){ window.__ber_share_done(h); };
+		if (navigator.share) { navigator.share({title: '8 Bit Evil Returns', text: 'Join my co-op room!', url: u}).then(function(){done('shared');}, function(){done('failed');}); }
+		else if (navigator.clipboard) { navigator.clipboard.writeText(u).then(function(){done('copied');}, function(){done('failed');}); }
+		else { done('failed'); }
+	})(%s)""" % JSON.stringify(url))
+
+var _share_cb: JavaScriptObject
+
+## Inside the Scareathon site (or any page embedding us), not opened directly.
+func in_frame() -> bool:
+	return is_web() and bool(JavaScriptBridge.eval("window.parent !== window"))
 
 func _post_to_page(msg: Dictionary) -> void:
 	if not is_web():

@@ -6,7 +6,13 @@ extends RefCounted
 #   spawns: while from <= minute < to, keep spawning `enemy` at `rate`/s.
 #   events: one-shot at `at` minutes: "ring" circles the player, "boss" spawns
 #           a big version that drops a chest.
-# props_per_chunk: [min, max] props tried per 160px chunk (default [0, 3]).
+# layouts: how each 160px chunk is filled, one picked per chunk by weight `w`
+#   (obstacles.gd): "open" (nothing), "row" (n in a line, `gap` apart, `mix`
+#   alternates kinds, `vertical` chance), "grid" (cols x rows plot, `missing`
+#   chance per cell), "grove" (n within radius r), "landmark" (a `center` with
+#   one `around` kind at fixed `spots`), "line" (a solid run, `hole` chance of a
+#   gap), "aisle" (two facing columns, `middle` at the end), "scatter" (random).
+# props_per_chunk: [min, max] props tried per chunk by "scatter" (default [0, 3]).
 # Modifiers: hp_per_minute (how fast monsters toughen), speed_mul (monster
 # speed), silver_bonus (extra silver at the end). `locked` stages need the feat
 # that lists them in progression.gd.
@@ -14,6 +20,16 @@ const STAGES := {
 	"graveyard": {
 		"name": "The Graveyard", "about": "Where it all started.", "ground": "gamebg", "hp_per_minute": 0.35, "max_alive": 600,
 		"obstacles": ["grave_1_small", "grave_2", "tree", "tree_2", "tree_3", "tree_4", "tree_5", "tree_6", "street_lamp", "mausoleum", "prop_angel", "prop_open_grave"],
+		"layouts": [
+			{"t": "open", "w": 2.5},
+			{"t": "row", "w": 3, "kinds": ["grave_1_small", "grave_2"], "n": [3, 4], "gap": 30, "mix": true},
+			{"t": "grid", "w": 2, "kinds": ["grave_1_small", "grave_2"], "cols": [2, 3], "rows": 2, "gap": [32, 40]},
+			{"t": "grove", "w": 2, "kinds": ["tree", "tree_2", "tree_3", "tree_4", "tree_5", "tree_6"], "n": [2, 4], "r": 38},
+			{"t": "landmark", "w": 1, "center": ["mausoleum"], "around": ["street_lamp"], "spots": [[-52, 8], [52, 8]]},
+			{"t": "landmark", "w": 1, "center": ["prop_angel"], "around": ["grave_1_small", "grave_2"], "spots": [[-34, 18], [34, 18]]},
+			{"t": "row", "w": 1, "kinds": ["prop_open_grave", "grave_2"], "n": 2, "gap": 46, "mix": true},
+			{"t": "row", "w": 0.7, "kinds": ["street_lamp"], "n": 2, "gap": 70},
+		],
 		"spawns": [
 			{"enemy": "zombie", "from": 0.0, "to": 3.0, "rate": 0.6},
 			{"enemy": "skull", "from": 0.75, "to": 5.0, "rate": 0.4},
@@ -47,6 +63,16 @@ const STAGES := {
 		"props_per_chunk": [1, 4],
 		"obstacles": ["grave_1_small", "grave_2", "tree_5", "tree_6", "mausoleum", "prop_blood_fountain", "prop_gibbet", "prop_obelisk", "prop_angel", "prop_open_grave"],
 		"decor": ["blood", "prop_bones"],
+		"layouts": [
+			{"t": "open", "w": 2},
+			{"t": "row", "w": 2, "kinds": ["grave_1_small", "grave_2"], "n": [3, 4], "gap": 30, "mix": true},
+			{"t": "grid", "w": 1.5, "kinds": ["grave_1_small", "grave_2"], "cols": [2, 3], "rows": 2, "gap": [32, 40]},
+			{"t": "landmark", "w": 0.7, "center": ["prop_blood_fountain"], "around": ["prop_obelisk"], "spots": [[-50, 4], [50, 4]]},
+			{"t": "row", "w": 1, "kinds": ["prop_gibbet"], "n": 2, "gap": 56},
+			{"t": "grove", "w": 1.5, "kinds": ["tree_5", "tree_6"], "n": [2, 3], "r": 36},
+			{"t": "landmark", "w": 1, "center": ["prop_angel", "mausoleum"], "around": ["prop_obelisk"], "spots": [[-50, 10], [50, 10]]},
+			{"t": "row", "w": 0.6, "kinds": ["prop_open_grave"], "n": 2, "gap": 46},
+		],
 		"spawns": [
 			{"enemy": "skull", "from": 0.0, "to": 4.0, "rate": 1.0},
 			{"enemy": "ghost", "from": 0.0, "to": 6.0, "rate": 0.6},
@@ -74,6 +100,16 @@ const STAGES := {
 		"ground": "ground_pumpkin", "hp_per_minute": 0.4, "max_alive": 600, "locked": true, "silver_bonus": 0.2,
 		"props_per_chunk": [1, 4],
 		"obstacles": ["tree_3", "tree_owl", "candybasket", "street_lamp", "prop_hay_bale", "prop_pumpkin_pile", "prop_corn", "prop_fence", "prop_scarecrow"],
+		"layouts": [
+			{"t": "open", "w": 2},
+			{"t": "grid", "w": 2, "kinds": ["prop_pumpkin_pile"], "cols": [2, 3], "rows": 2, "gap": [40, 34], "missing": 0.25},
+			{"t": "line", "w": 2, "kinds": ["prop_fence"], "n": [2, 3], "gap": 40, "hole": 0.35, "always_hole_from": 3},
+			{"t": "row", "w": 2, "kinds": ["prop_corn"], "n": [3, 5], "gap": 20, "vertical": 0.15},
+			{"t": "landmark", "w": 1, "center": ["prop_scarecrow"], "around": ["prop_hay_bale", "prop_pumpkin_pile"], "spots": [[-40, 10], [40, 10]]},
+			{"t": "grove", "w": 1.5, "kinds": ["tree_3", "tree_owl"], "n": [1, 3], "r": 34},
+			{"t": "row", "w": 1, "kinds": ["prop_hay_bale"], "n": 2, "gap": 38},
+			{"t": "row", "w": 0.4, "kinds": ["candybasket", "street_lamp"], "n": 2, "gap": 46, "mix": true},
+		],
 		"spawns": [
 			{"enemy": "pumpkin", "from": 0.0, "to": 6.0, "rate": 1.0},
 			{"enemy": "zombie", "from": 0.0, "to": 4.0, "rate": 0.4},
@@ -100,6 +136,16 @@ const STAGES := {
 		"speed_mul": 1.15,
 		"props_per_chunk": [1, 4],
 		"obstacles": ["tree_5", "tree_6", "grave_1_small", "mausoleum", "prop_snow_pine", "prop_snowman", "prop_ice_grave", "prop_snow_angel"],
+		"layouts": [
+			{"t": "open", "w": 2},
+			{"t": "grove", "w": 3, "kinds": ["prop_snow_pine"], "n": [3, 5], "r": 46, "spacing": 22},
+			{"t": "row", "w": 2, "kinds": ["prop_ice_grave", "grave_1_small"], "n": [3, 4], "gap": 30, "mix": true},
+			{"t": "grid", "w": 1, "kinds": ["prop_ice_grave"], "cols": [2, 3], "rows": 2, "gap": [32, 40]},
+			{"t": "landmark", "w": 1, "center": ["prop_snow_angel"], "around": ["prop_snowman"], "spots": [[-36, 14], [36, 14]]},
+			{"t": "landmark", "w": 0.7, "center": ["mausoleum"], "around": ["prop_snow_pine"], "spots": [[-54, 4], [54, 4]]},
+			{"t": "row", "w": 0.6, "kinds": ["prop_snowman"], "n": [1, 2], "gap": 40},
+			{"t": "grove", "w": 1, "kinds": ["tree_5", "tree_6"], "n": [2, 3], "r": 34},
+		],
 		"spawns": [
 			{"enemy": "ghost", "from": 0.0, "to": 30.0, "rate": 0.6},
 			{"enemy": "skull", "from": 0.0, "to": 30.0, "rate": 0.8},
@@ -124,6 +170,14 @@ const STAGES := {
 		"props_per_chunk": [1, 4],
 		"obstacles": ["street_lamp", "prop_sewer_pipe", "prop_barrels", "prop_brick_pillar"],
 		"decor": ["sewer", "skull", "blood", "prop_bones"],
+		"layouts": [
+			{"t": "open", "w": 2},
+			{"t": "line", "w": 3, "kinds": ["prop_sewer_pipe"], "n": [2, 3], "gap": 40, "hole": 0.4, "always_hole_from": 3},
+			{"t": "aisle", "w": 1.5, "kinds": ["prop_brick_pillar"], "n": 2, "gap": [64, 56], "middle": ["prop_barrels", "street_lamp"]},
+			{"t": "grove", "w": 1.5, "kinds": ["prop_barrels"], "n": [1, 2], "r": 30, "spacing": 34},
+			{"t": "row", "w": 1, "kinds": ["street_lamp"], "n": 2, "gap": 70},
+			{"t": "row", "w": 1, "kinds": ["prop_brick_pillar"], "n": [2, 3], "gap": 40},
+		],
 		"spawns": [
 			{"enemy": "zombie", "from": 0.0, "to": 30.0, "rate": 1.0},
 			{"enemy": "swampthing", "from": 1.0, "to": 30.0, "rate": 0.35},
@@ -146,6 +200,15 @@ const STAGES := {
 		"props_per_chunk": [1, 4],
 		"obstacles": ["mausoleum", "grave_1_small", "prop_sarcophagus", "prop_broken_pillar", "prop_candelabra", "prop_open_grave"],
 		"decor": ["skull", "blood", "prop_bones"],
+		"layouts": [
+			{"t": "open", "w": 1.5},
+			{"t": "aisle", "w": 2.5, "kinds": ["prop_broken_pillar"], "n": [2, 3], "gap": [64, 40], "middle": ["prop_candelabra"]},
+			{"t": "landmark", "w": 2, "center": ["prop_sarcophagus"], "around": ["prop_candelabra"], "spots": [[-36, 2], [36, 2]]},
+			{"t": "row", "w": 1.5, "kinds": ["grave_1_small"], "n": [3, 4], "gap": 30},
+			{"t": "landmark", "w": 1, "center": ["mausoleum"], "around": ["prop_candelabra"], "spots": [[-50, 8], [50, 8]]},
+			{"t": "row", "w": 0.7, "kinds": ["prop_open_grave"], "n": 2, "gap": 46},
+			{"t": "grid", "w": 0.7, "kinds": ["prop_sarcophagus"], "cols": 2, "rows": 2, "gap": [56, 40], "missing": 0.2},
+		],
 		"spawns": [
 			{"enemy": "skull", "from": 0.0, "to": 30.0, "rate": 1.2},
 			{"enemy": "shadowbeast", "from": 0.5, "to": 30.0, "rate": 0.5},

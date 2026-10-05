@@ -44,6 +44,7 @@ func step(delta: float) -> void:
 	var heroes: Array = run.living_heroes()
 	if heroes.is_empty():
 		return
+	_sweep_far(heroes, delta)
 	var i := list.size() - 1
 	while i >= 0:
 		var p: Dictionary = list[i]
@@ -72,6 +73,24 @@ func step(delta: float) -> void:
 			run.collect(p, hero)
 		i -= 1
 	queue_redraw()
+
+## Every few seconds, drops loose pickups left far behind every hero (chests
+## stay: they're worth walking back for), so a long run never piles them up.
+const FAR_GONE := 2500.0
+var _sweep_clock := 0.0
+func _sweep_far(heroes: Array, delta: float) -> void:
+	_sweep_clock -= delta
+	if _sweep_clock > 0.0:
+		return
+	_sweep_clock = 5.0
+	var i := list.size() - 1
+	while i >= 0:
+		var p: Dictionary = list[i]
+		if p.type != "chest" and heroes.all(func(h): return h.position.distance_squared_to(p.pos) > FAR_GONE * FAR_GONE):
+			if p.type == "candy":
+				_candy_count -= 1
+			list.remove_at(i)
+		i -= 1
 
 # Guests draw whatever the host's snapshot says is on the ground.
 const MIRROR_TYPES := ["candy0", "candy1", "candy2", "silver", "heart", "clock", "skull", "basket", "chest"]

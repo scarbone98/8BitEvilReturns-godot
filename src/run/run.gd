@@ -64,6 +64,11 @@ var boss_kinds := {}   # boss kind -> true once one is defeated
 var team_kinds := {}   # enemy kind -> defeated, every hero together
 var _quest_told := {}  # quest id -> already toasted this run
 var _quest_clock := 0.0
+var _stuck_check := false   # dev flag stuckcheck: report monsters that stop short of the heroes
+var _stuck_clock := 0.0
+var _stuck_seen := {}       # uid -> position at the last sample
+var _stuck_total := Vector2i.ZERO  # (stuck, checked) over the run
+var _stuck_printed := -1
 var dev := false  # dev/test runs never save
 var dev_unlimited := false
 var _bench := 0   # frames left to time; dev flag "bench"
@@ -267,6 +272,12 @@ func apply_dev_flags(f: Dictionary) -> void:
 				h.take_hit(99999.0))
 	if f.has("levelup"):
 		_on_level_up.call_deferred()
+	_stuck_check = f.has("stuckcheck")
+	if _stuck_check:
+		player.god = true  # can't die while measuring
+	player.stand = f.has("stand")
+	if f.has("trapdemo"):
+		_trap_demo.call_deferred()
 	if f.has("die_in"):
 		get_tree().create_timer(float(f.die_in)).timeout.connect(_game_over)
 	if f.has("levelup_in"):
@@ -353,6 +364,8 @@ func _tick(delta: float) -> void:
 	popups.step(delta)
 	_check_relic()
 	_check_quests(delta)
+	if _stuck_check:
+		_sample_stuck(delta)
 	var t3 := Time.get_ticks_usec()
 	if _bench > 0:
 		_prof[0] += t1 - t0; _prof[1] += t2 - t1; _prof[2] += t3 - t2
@@ -930,6 +943,51 @@ func _check_quests(delta: float) -> void:
 			for seat in heroes:
 				if not _is_local(heroes[seat]):
 					netsync.send_quest_toast(seat, q.id, q.name)
+
+## Dev: boxes a few zombies in a closed ring of fence posts near the hero, so
+## the stuck safety net has to free them (watch "moved by the safety net").
+func _trap_demo() -> void:
+	var c: Vector2 = player.position + Vector2(90, 0)
+	obstacles.add_ring(c, 26.0)
+	for k in 3:
+		enemies.spawn("zombie", c + Vector2(k * 6 - 6, 0))
+	print("[trapdemo] 3 zombies boxed in at %s" % c)
+
+## Dev: every 2s, walking monsters within 250px of a hero (but not touching
+## one) that moved under 6px since the last sample while pressed against a
+## prop count as stuck.
+func _sample_stuck(delta: float) -> void:
+	_stuck_clock -= delta
+	if _stuck_clock > 0.0:
+		return
+	_stuck_clock = 2.0
+	var now := {}
+	var stuck := 0
+	var checked := 0
+	var heroes_at := living_heroes().map(func(h): return h.position)
+	for i in enemies.count():
+		var k: int = enemies.kidx[i]
+		if enemies._kind_fly[k] == 1 or enemies._kind_rooted[k] == 1 or enemies.frozen > 0.0:
+			continue
+		var p: Vector2 = enemies.pos[i]
+		var d := INF
+		for hp_ in heroes_at:
+			d = minf(d, p.distance_to(hp_))
+		if d > 250.0 or d < 30.0:
+			continue
+		var u: int = enemies.uid[i]
+		now[u] = p
+		if _stuck_seen.has(u):
+			checked += 1
+			# Stuck on a prop: barely moved, and right up against one.
+			if p.distance_to(_stuck_seen[u]) < 6.0 and not obstacles.is_free(p, enemies.radius[i] * 0.6 + 3.0):
+				stuck += 1
+	_stuck_seen = now
+	_stuck_total += Vector2i(stuck, checked)
+	if int(time / 30.0) != _stuck_printed:
+		_stuck_printed = int(time / 30.0)
+		print("[stuck] %s: %d of %d this sample; run so far %d of %d (%.1f%%); moved by the safety net %d; pickups %d" % [UI.time_text(time), stuck, checked,
+			_stuck_total.x, _stuck_total.y, 100.0 * _stuck_total.x / maxf(1.0, _stuck_total.y), enemies.relocated, pickups.list.size()])
 
 func summary_for(h) -> Dictionary:
 	var seconds := int(time)
