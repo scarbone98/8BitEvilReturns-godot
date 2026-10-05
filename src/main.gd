@@ -404,6 +404,7 @@ func show_coop(error := "") -> void:
 		_watch_net()
 		Net.create(_my_name(), Meta.selected)
 		show_lobby(), 26))
+	box.add_child(UI.button("BROWSE PUBLIC ROOMS", show_browse, 22))
 	box.add_child(UI.label("JOIN WITH A CODE", 8, UI.GOLD))
 	var code_l := UI.label("_ _ _ _", 16, UI.PALE)
 	box.add_child(code_l)
@@ -442,6 +443,45 @@ func show_coop(error := "") -> void:
 	box.add_child(row)
 	box.add_child(UI.button("BACK", show_title, 20))
 
+## Public rooms anyone can join, refreshed every few seconds.
+func show_browse() -> void:
+	var box := _page("PUBLIC ROOMS")
+	var status := UI.body("Looking for rooms...", 11, UI.DIM)
+	box.add_child(status)
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 4)
+	list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(list)
+	var refresh := func(): pass
+	refresh = func():
+		Net.list_public(func(rooms):
+			if not is_instance_valid(list):
+				return
+			for n in list.get_children():
+				n.queue_free()
+			if rooms == null:
+				status.text = "Couldn't reach the server. Trying again..."
+			elif rooms.is_empty():
+				status.text = "No public rooms right now. Host one and make it public!"
+			else:
+				status.text = "Tap a room to join."
+				for r in rooms:
+					var st: Dictionary = Db.STAGES.get(str(r.stage), Db.STAGES.graveyard)
+					var b := UI.button("%s  %d/%d" % [r.leader, int(r.players), int(r.max)], func():
+						_watch_net()
+						Net.join(str(r.code), _my_name(), Meta.selected)
+						show_lobby(), 22)
+					list.add_child(b)
+					list.add_child(UI.body(st.name, 10, UI.DIM)))
+	refresh.call()
+	var timer := Timer.new()
+	timer.wait_time = 5.0
+	timer.autostart = true
+	timer.timeout.connect(func(): refresh.call())
+	box.add_child(timer)
+	box.add_child(UI.button("REFRESH", func(): refresh.call(), 20))
+	box.add_child(UI.button("BACK", func(): show_coop(), 20))
+
 var _net_watched := false
 
 ## Lobby and run hooks, connected once.
@@ -463,7 +503,10 @@ func show_lobby() -> void:
 	var box := _page("CO-OP ROOM")
 	var code_l := UI.label("CONNECTING...", 24, UI.GOLD)
 	box.add_child(code_l)
-	box.add_child(UI.body("Friends tap CO-OP, then type this code.", 11, UI.DIM))
+	var how := UI.body("Friends tap CO-OP, then type this code.", 11, UI.DIM)
+	box.add_child(how)
+	var vis_btn := UI.button("", func(): Net.set_public(not Net.public_room), 20)
+	box.add_child(vis_btn)
 	var list := VBoxContainer.new()
 	list.add_theme_constant_override("separation", 3)
 	list.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -496,6 +539,10 @@ func show_lobby() -> void:
 			list.add_child(row)
 		stage_l.text = "STAGE: " + Db.STAGES.get(Net.stage, Db.STAGES.graveyard).name
 		stage_btn.visible = Net.is_leader and not Net.starting
+		vis_btn.text = "PUBLIC ROOM  (TAP: CODE ONLY)" if Net.public_room else "CODE ONLY  (TAP: MAKE PUBLIC)"
+		vis_btn.visible = Net.is_leader and not Net.starting
+		how.text = ("Anyone can join from BROWSE PUBLIC ROOMS, or with this code." if Net.public_room
+			else "Friends tap CO-OP, then type this code.")
 		start.visible = Net.is_leader and not Net.starting
 		wait.visible = Net.starting or (not Net.is_leader and Net.code != "")
 		if Net.starting:
@@ -551,7 +598,11 @@ func _dev_coop(f: Dictionary) -> void:
 	if f.coop == "host":
 		Net.create(_my_name(), Meta.selected)
 		var want := int(f.get("players", "2"))
+		var made_public := [false]
 		Net.room_changed.connect(func():
+			if f.has("public") and Net.code != "" and not made_public[0]:
+				made_public[0] = true
+				Net.set_public(true)
 			if Net.code != "":
 				print("[room] ", Net.code, " players ", Net.players.size())
 			if Net.players.size() >= want and not Net.in_game:

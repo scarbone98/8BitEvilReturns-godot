@@ -35,6 +35,7 @@ var is_leader := false        # this player runs the lobby (stage, START)
 var host_slot := 0            # which seat runs the fight (the server's own seat when it hosts)
 var players: Array = []        # [{slot, name, hero, away}]
 var stage := "graveyard"
+var public_room := false       # listed for anyone to join (else code only)
 var in_game := false
 var starting := false          # the leader pressed start; waiting for the game to begin
 var reconnecting := false
@@ -73,6 +74,27 @@ func host_connect(room_code: String, host_token: String) -> void:
 func join(room_code: String, name: String, hero: String) -> void:
 	_open({"type": "join", "code": room_code, "name": name, "hero": hero})
 
+## Leader: list the room publicly, or keep it code-only.
+func set_public(on: bool) -> void:
+	pick({"public": on})
+
+## Public rooms that can be joined right now: done.call(rooms) with
+## [{code, leader, players, max, stage}], or done.call(null) if it failed.
+func list_public(done: Callable) -> void:
+	var req := HTTPRequest.new()
+	add_child(req)
+	req.timeout = 8.0
+	req.request_completed.connect(func(result, code_, _h, body):
+		req.queue_free()
+		if result != HTTPRequest.RESULT_SUCCESS or code_ != 200:
+			done.call(null)
+			return
+		var d = JSON.parse_string(body.get_string_from_utf8())
+		done.call(d.get("rooms", []) if d is Dictionary else null))
+	if req.request(Bridge.server_url() + "/8bitevilreturns/v2/rooms") != OK:
+		req.queue_free()
+		done.call(null)
+
 func pick(fields: Dictionary) -> void:
 	_send_json({"type": "pick"}.merged(fields))
 
@@ -96,6 +118,7 @@ func _reset() -> void:
 	is_leader = false
 	host_slot = 0
 	players = []
+	public_room = false
 	in_game = false
 	reconnecting = false
 	_was_open = false
@@ -258,6 +281,7 @@ func _on_text(text: String) -> void:
 			host_slot = int(m.get("host_slot", 0))
 			players = m.players
 			stage = str(m.get("stage", "graveyard"))
+			public_room = bool(m.get("public", false))
 			starting = bool(m.get("starting", false))
 			_save_session()
 			if reconnecting:
