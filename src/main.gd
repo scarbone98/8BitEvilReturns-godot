@@ -254,13 +254,12 @@ func show_select() -> void:
 		mode_l.add_theme_color_override("font_color", UI.GOLD if cl else UI.DIM)
 		for n in stage_quests.get_children():
 			n.queue_free()
+		# Just a hint here; the quests themselves are in the pause menu.
 		var list := Db.quests_for(Meta.stage)
 		if not list.is_empty():
-			var crowned := Meta.is_crowned(Meta.stage)
-			stage_quests.add_child(UI.label("MAP CROWNED" if crowned else "MAP QUESTS", 8, UI.GOLD))
-			for q in list:
-				var done: bool = Meta.quests.has(q.id)
-				stage_quests.add_child(UI.body(("+ " if done else "- ") + q.desc + ("" if done else "  +%d" % q.silver), 10, UI.GOLD if done else UI.DIM))
+			var done_n := list.filter(func(q): return Meta.quests.has(q.id)).size()
+			var hint := "MAP CROWNED" if Meta.is_crowned(Meta.stage) else "Map quests: %d/%d done (see the pause menu)" % [done_n, list.size()]
+			stage_quests.add_child(UI.body(hint, 10, UI.GOLD if done_n == list.size() else UI.DIM))
 
 	start.pressed.connect(func():
 		if Meta.is_unlocked(Meta.selected):
