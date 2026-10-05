@@ -18,6 +18,7 @@ var totals := {"kills": 0, "candy": 0, "chests": 0, "bosses": 0, "silver": 0, "d
 var kinds := {}             # enemy -> defeated, all runs
 var evolved: Array = []     # evolutions/unions ever made
 var seen: Array = []        # weapons/passives ever picked up
+var quests: Array = []      # map quests completed (ids from quests.gd)
 var rev = null              # server revision of the account save; null before the first upload
 var _sync_queued := false
 var dev_unlock_all := false  # dev flag `unlockall`: everything open, nothing saved
@@ -134,8 +135,28 @@ func finish_run(r: Dictionary) -> Dictionary:
 		for c in Db.CHARACTERS:
 			if Db.CHARACTERS[c].get("feat") == f:
 				new_unlocks.append(c)
+	# Map quests: the run's map only, checked against what the team did.
+	var new_quests := []
+	var crowned := false
+	var st: Dictionary = r.get("quest", {})
+	var stage_id := str(r.get("stage", ""))
+	var list := Db.quests_for(stage_id)
+	for q in list:
+		if quests.has(q.id) or not Db.quest_met(q.check, st):
+			continue
+		quests.append(q.id)
+		new_quests.append(q.id)
+		silver += int(q.silver)
+	if not new_quests.is_empty() and is_crowned(stage_id):
+		crowned = true
+		silver += Db.QUEST_CROWN_SILVER
 	save()
-	return {"best": is_best, "feats": new_feats, "unlocks": new_unlocks}
+	return {"best": is_best, "feats": new_feats, "unlocks": new_unlocks, "quests": new_quests, "crowned": crowned}
+
+## Every quest of the map done.
+func is_crowned(stage_id: String) -> bool:
+	var list := Db.quests_for(stage_id)
+	return not list.is_empty() and list.all(func(q): return quests.has(q.id))
 
 func _feat_met(c: Dictionary, r: Dictionary) -> bool:
 	if c.has("run"):
@@ -157,7 +178,7 @@ func _feat_met(c: Dictionary, r: Dictionary) -> bool:
 func to_dict() -> Dictionary:
 	return {"version": 1, "silver": silver, "best": best_seconds, "selected": selected, "stage": stage,
 		"unlocked": unlocked, "feats": feats, "powerups": powerups, "totals": totals, "kinds": kinds,
-		"evolved": evolved, "seen": seen}
+		"evolved": evolved, "seen": seen, "quests": quests}
 
 func _from_dict(d: Dictionary) -> void:
 	silver = int(d.get("silver", 0))
@@ -173,6 +194,7 @@ func _from_dict(d: Dictionary) -> void:
 	kinds = d.get("kinds", {})
 	evolved = d.get("evolved", [])
 	seen = d.get("seen", [])
+	quests = d.get("quests", [])
 	if not Db.CHARACTERS.has(selected) or not is_unlocked(selected):
 		selected = "joe"
 	if not Db.STAGES.has(stage) or not content_unlocked(stage):
@@ -289,6 +311,8 @@ func _merge_remote(remote, remote_rev) -> void:
 		if not evolved.has(id): evolved.append(id)
 	for id in mine.seen:
 		if not seen.has(id): seen.append(id)
+	for id in mine.get("quests", []):
+		if not quests.has(id): quests.append(id)
 	for id in mine.powerups:
 		powerups[id] = maxi(powerup_rank(id), int(mine.powerups[id]))
 	for k in totals:

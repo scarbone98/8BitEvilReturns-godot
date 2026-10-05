@@ -10,6 +10,7 @@ const _Characters := preload("res://src/data/characters.gd")
 const _Enemies := preload("res://src/data/enemies.gd")
 const _Stages := preload("res://src/data/stages.gd")
 const _Progression := preload("res://src/data/progression.gd")
+const _Quests := preload("res://src/data/quests.gd")
 
 const SHEETS: Dictionary = _Sheets.SHEETS
 const WEAPONS: Dictionary = _Weapons.WEAPONS
@@ -22,6 +23,8 @@ const CHARACTERS: Dictionary = _Characters.CHARACTERS
 const ENEMIES: Dictionary = _Enemies.ENEMIES
 const CANDY: Array = _Enemies.CANDY
 const STAGES: Dictionary = _Stages.STAGES
+const QUESTS: Dictionary = _Quests.QUESTS
+const QUEST_CROWN_SILVER: int = _Quests.CROWN_SILVER
 const FEATS: Dictionary = _Progression.FEATS
 const POWERUPS: Dictionary = _Progression.POWERUPS
 
@@ -111,3 +114,27 @@ func recipe_for(id: String) -> Array:
 		if d.get("union") is Dictionary and d.union.into == id:
 			return [w, d.union.with, "union"]
 	return []
+
+## The quests of a map (empty if it has none).
+func quests_for(stage_id: String) -> Array:
+	return QUESTS.get(stage_id, {}).get("list", [])
+
+## [have, need] for a quest check against a run's quest state (see
+## Run.quest_state): whole numbers, done when have >= need.
+func quest_progress(check: Dictionary, st: Dictionary) -> Array:
+	if check.has("relic"):
+		return [1 if st.get("relic", false) else 0, 1]
+	if check.has("boss"):
+		return [1 if st.get("boss_kinds", {}).has(check.boss) else 0, 1]
+	if check.has("kind"):
+		return [int(st.get("team_kinds", {}).get(check.kind, 0)), int(check.min)]
+	if check.has("bosses"):
+		return [int(st.get("bosses", 0)), int(check.bosses)]
+	if check.has("run"):
+		return [int(st.get(check.run, 0)), int(check.min)]
+	return [0, 1]
+
+func quest_met(check: Dictionary, st: Dictionary) -> bool:
+	var p := quest_progress(check, st)
+	return p[0] >= p[1]
+

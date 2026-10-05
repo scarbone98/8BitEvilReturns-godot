@@ -116,6 +116,12 @@ func send_chest(seat: int, gained: Array) -> void:
 func send_toast(seat: int, text: String) -> void:
 	Net.send_json(seat, {"t": "toast", "text": text})
 
+func send_quest_toast(seat: int, id: String, quest_name: String) -> void:
+	Net.send_json(seat, {"t": "quest", "id": id, "name": quest_name})
+
+func send_relic() -> void:
+	Net.send_json(Net.BROADCAST, {"t": "relic"})
+
 func send_over(seat: int, summary: Dictionary) -> void:
 	Net.send_json(seat, {"t": "over", "summary": summary})
 
@@ -709,6 +715,12 @@ func _guest_json(m: Dictionary) -> void:
 			run.show_chest_note(m.get("gained", []))
 		"toast":
 			run.hud.toast(str(m.get("text", "")), UI.RED)
+		"relic":
+			run.on_relic_found()
+		"quest":
+			# Only news if this player hasn't done that quest before.
+			if not Meta.quests.has(str(m.get("id", ""))):
+				run.hud.toast("QUEST COMPLETE: " + str(m.get("name", "")), UI.GOLD)
 		"outdated":
 			run.hud.banner("A new version is out: reload the page")
 		"hello_ok":

@@ -484,6 +484,81 @@ def bone_pile():
                 put(im, x, y, BONE[3])
     return im
 
+# ================================================================ Quest relics (16x16)
+
+GOLD = (hexc("fff2a8"), hexc("f2c94a"), hexc("c08a1a"), hexc("6e4a0a"))
+
+def _outline(im, col=hexc("1a1206")):
+    A.outline(im, col)
+    return im
+
+def relic_locket():
+    im = new(16, 16)
+    line(im, 5, 1, 8, 4, GOLD[2]); line(im, 11, 1, 8, 4, GOLD[2])   # chain
+    shade_fill(im, lambda x, y: (x + 0.5 - 8) ** 2 / 20 + (y + 0.5 - 10) ** 2 / 20 < 1, 16, 16, GOLD, seed=40, noise=0.0)
+    rows(im, 6, 8, ["r.r.", "rrr.", ".r.."], {"r": hexc("c22a43")})
+    put(im, 6, 8, hexc("ff8a9a"))
+    return _outline(im)
+
+def relic_chalice():
+    im = new(16, 16)
+    shade_fill(im, lambda x, y: (2 <= y < 8 and abs(x + 0.5 - 8) < 6 - (y - 2) * 0.5) or (8 <= y < 12 and abs(x + 0.5 - 8) < 1.2) or (12 <= y < 15 and abs(x + 0.5 - 8) < 4), 16, 16, GOLD, seed=41, noise=0.0)
+    for x in range(3, 14):
+        put(im, x, 2, hexc("c0102a"))
+    put(im, 8, 1, hexc("e0283a"))
+    rows(im, 6, 4, ["g.g"], {"g": hexc("7ad7ff")})
+    return _outline(im)
+
+def relic_gourd():
+    im = new(16, 16)
+    shade_fill(im, lambda x, y: (x + 0.5 - 8) ** 2 / 36 + (y + 0.5 - 10) ** 2 / 22 < 1, 16, 16, GOLD, seed=42, noise=0.0)
+    for x in (5, 11):
+        line(im, x, 7, x, 13, GOLD[2])
+    rows(im, 7, 2, ["gg", ".g", ".g"], {"g": hexc("4a7a2a")})
+    rows(im, 4, 9, ["w"], {"w": hexc("ffffff")})
+    return _outline(im)
+
+def relic_frozen_heart():
+    im = new(16, 16)
+    ice = (hexc("e8f8ff"), hexc("9fd8f0"), hexc("5aa8d0"), hexc("2a6a90"))
+    for y in range(16):
+        for x in range(16):
+            u = (x + 0.5 - 8) / 6.0
+            v = -(y + 0.5 - 8.5) / 6.0
+            if (u * u + v * v - 1) ** 3 - u * u * v ** 3 <= 0:
+                put(im, x, y, ice[1])
+    shade_fill(im, lambda x, y: im.getpixel((x, y))[3] > 0, 16, 16, ice, seed=43, noise=0.0)
+    rows(im, 5, 5, ["ww", "w."], {"w": hexc("ffffff")})
+    line(im, 9, 6, 11, 10, ice[3])
+    return _outline(im, hexc("0a1e2a"))
+
+def relic_key():
+    im = new(16, 16)
+    rust = (hexc("d8a05a"), hexc("a8702a"), hexc("6e4214"), hexc("3a220a"))
+    shade_fill(im, lambda x, y: 9 < (x + 0.5 - 5) ** 2 + (y + 0.5 - 5) ** 2 < 20, 16, 16, rust, seed=44, noise=0.0)
+    thick(im, 8, 8, 14, 14, 0.8, rust[1])
+    rows(im, 11, 12, ["r.", "rr", ".r"], {"r": rust[1]})
+    rows(im, 13, 9, ["r", "rr"], {"r": rust[1]})
+    put(im, 2, 9, hexc("8ae02a")); put(im, 3, 10, hexc("6fb82a"))  # sewer slime
+    return _outline(im)
+
+def relic_crown():
+    im = new(16, 16)
+    rows(im, 1, 4, [
+        "b.....b.....b.",
+        "bb...bbb...bb.",
+        "bbb.bbbbb.bbb.",
+        "bbbbbbbbbbbbb.",
+        "bbbbbbbbbbbbb.",
+        "bkbbkbbkbbkbb.",
+        "bbbbbbbbbbbbb.",
+    ], {"b": BONE[0], "k": hexc("2a1a14")})
+    shade_fill(im, lambda x, y: im.getpixel((x, y))[3] > 0 and im.getpixel((x, y))[:3] != (42, 26, 20), 16, 16, BONE, seed=45, noise=0.0)
+    for x in (2, 7, 13):
+        put(im, x, 4, hexc("c22a43"))
+    put(im, 7, 7, hexc("7a3df0"))
+    return _outline(im)
+
 if __name__ == "__main__":
     A.save(angel_statue(), "prop_angel")
     A.save(open_grave(), "prop_open_grave")
@@ -506,3 +581,9 @@ if __name__ == "__main__":
     A.save(broken_pillar(), "prop_broken_pillar")
     A.save(sheet(candelabra()), "prop_candelabra")
     A.save(bone_pile(), "prop_bones")
+    A.save(relic_locket(), "relic_locket")
+    A.save(relic_chalice(), "relic_chalice")
+    A.save(relic_gourd(), "relic_gourd")
+    A.save(relic_frozen_heart(), "relic_frozen_heart")
+    A.save(relic_key(), "relic_key")
+    A.save(relic_crown(), "relic_crown")

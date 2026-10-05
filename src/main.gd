@@ -160,6 +160,9 @@ func show_select() -> void:
 	box.add_child(stage_row)
 	var stage_about := UI.body("", 10, UI.DIM)
 	box.add_child(stage_about)
+	var stage_quests := VBoxContainer.new()
+	stage_quests.add_theme_constant_override("separation", 0)
+	box.add_child(stage_quests)
 
 	var start := UI.button("START", func(): pass, 28)
 	box.add_child(start)
@@ -229,6 +232,15 @@ func show_select() -> void:
 		stage_l.text = "STAGE: " + st.name
 		var locked := Db.STAGES.keys().filter(func(sid): return not Meta.content_unlocked(sid)).size()
 		stage_about.text = st.get("about", "") + ("" if locked == 0 else "  (%d more to unlock)" % locked)
+		for n in stage_quests.get_children():
+			n.queue_free()
+		var list := Db.quests_for(Meta.stage)
+		if not list.is_empty():
+			var crowned := Meta.is_crowned(Meta.stage)
+			stage_quests.add_child(UI.label("MAP CROWNED" if crowned else "MAP QUESTS", 8, UI.GOLD))
+			for q in list:
+				var done: bool = Meta.quests.has(q.id)
+				stage_quests.add_child(UI.body(("+ " if done else "- ") + q.desc + ("" if done else "  +%d" % q.silver), 10, UI.GOLD if done else UI.DIM))
 
 	start.pressed.connect(func():
 		if Meta.is_unlocked(Meta.selected):

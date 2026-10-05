@@ -56,6 +56,14 @@ var net_paused := false  # host: our own connection dropped, so the fight waits
 var _log_clock := 0.0  # guests: the bot's status log (the run clock follows the host's)
 var _modal: Control
 var autoplay := false
+# Map quests (see quests.gd): what the whole team did this run.
+var relic_found := false
+var relic_pos := Vector2.INF
+var relic: Node2D
+var boss_kinds := {}   # boss kind -> true once one is defeated
+var team_kinds := {}   # enemy kind -> defeated, every hero together
+var _quest_told := {}  # quest id -> already toasted this run
+var _quest_clock := 0.0
 var dev := false  # dev/test runs never save
 var dev_unlimited := false
 var _bench := 0   # frames left to time; dev flag "bench"
@@ -142,6 +150,7 @@ func start(char_id: String, p_stage := "graveyard", coop := {}) -> void:
 	hud.pause_pressed.connect(_show_pause)
 	root.add_child(hud)
 	obstacles.update_around(_hero_positions())
+	_place_relic()
 
 	if mode != "solo":
 		netsync = NetSyncScript.new()
@@ -258,6 +267,8 @@ func apply_dev_flags(f: Dictionary) -> void:
 				h.take_hit(99999.0))
 	if f.has("levelup"):
 		_on_level_up.call_deferred()
+	if f.has("die_in"):
+		get_tree().create_timer(float(f.die_in)).timeout.connect(_game_over)
 	if f.has("levelup_in"):
 		get_tree().create_timer(float(f.levelup_in)).timeout.connect(_on_level_up)
 	if f.has("chest"):
@@ -340,6 +351,8 @@ func _tick(delta: float) -> void:
 	var t2 := Time.get_ticks_usec()
 	pickups.step(delta)
 	popups.step(delta)
+	_check_relic()
+	_check_quests(delta)
 	var t3 := Time.get_ticks_usec()
 	if _bench > 0:
 		_prof[0] += t1 - t0; _prof[1] += t2 - t1; _prof[2] += t3 - t2
@@ -447,8 +460,10 @@ func _on_enemy_died(at: Vector2, kind: String, is_boss: bool, attacker: int) -> 
 	var h = heroes.get(attacker, player)
 	h.kills += 1
 	h.kind_kills[kind] = h.kind_kills.get(kind, 0) + 1
+	team_kinds[kind] = team_kinds.get(kind, 0) + 1
 	if is_boss:
 		h.bosses += 1
+		boss_kinds[kind] = true
 		pickups.drop("chest", at)
 		return
 	var tier: int = Db.ENEMIES[kind].candy
@@ -769,6 +784,7 @@ func _show_pause() -> void:
 	c.add_child(grid)
 	box.add_child(c)
 	box.add_child(UI.label("Time %s   Kills %d" % [UI.time_text(time), player.kills], 8, UI.DIM))
+	_add_quest_lines(box)
 	var resume := UI.button("RESUME", func(): _set_modal(null))
 	box.add_child(resume)
 	box.add_child(UI.button("GIVE UP", func():
@@ -786,6 +802,7 @@ func _show_coop_menu() -> void:
 	overlay.add_child(box)
 	box.add_child(UI.label("CO-OP  " + Net.code, 10, UI.GOLD))
 	box.add_child(UI.label("The fight goes on!", 8, UI.DIM))
+	_add_quest_lines(box)
 	var back := UI.button("BACK", func(): overlay.queue_free(), 22)
 	box.add_child(back)
 	box.add_child(UI.button("LEAVE GAME", func():
@@ -831,6 +848,89 @@ func on_revive(h) -> void:
 		else:
 			enemies.knock[i] += (enemies.pos[i] - h.position).normalized() * 400.0
 
+# ---------------------------------------------------------------- Map quests
+
+## Puts this map's relic where quests.gd says (pushed clear of props, the
+## same spot on every device since props are seeded by position).
+func _place_relic() -> void:
+	var q: Dictionary = Db.QUESTS.get(stage_id, {})
+	if not q.has("relic"):
+		return
+	var r: Dictionary = q.relic
+	relic_pos = obstacles.free_spot(Vector2.RIGHT.rotated(deg_to_rad(float(r.dir))) * float(r.dist), 10.0)
+	relic = preload("res://src/run/relic.gd").new()
+	relic.sprite = str(r.sprite)
+	relic.position = relic_pos
+	world.add_child(relic)
+
+## Host/solo: any hero standing on the relic picks it up for the team.
+func _check_relic() -> void:
+	if relic_found or relic == null:
+		return
+	for h in living_heroes():
+		if h.position.distance_to(relic_pos) < 14.0:
+			on_relic_found()
+			if netsync:
+				netsync.send_relic()
+			return
+
+func on_relic_found() -> void:
+	if relic_found:
+		return
+	relic_found = true
+	if relic:
+		relic.queue_free()
+		relic = null
+	hud.toast("Found the %s!" % Db.QUESTS[stage_id].relic.name, UI.GOLD)
+	if autoplay:
+		print("[quest] relic found at %s" % UI.time_text(time))
+
+## What the team has done toward this map's quests so far.
+## This map's quests with live progress, for the pause menus.
+func _add_quest_lines(box: Control) -> void:
+	var list := Db.quests_for(stage_id)
+	if list.is_empty():
+		return
+	box.add_child(UI.label("MAP QUESTS", 8, UI.GOLD))
+	var st := quest_state()
+	for q in list:
+		var p := Db.quest_progress(q.check, st)
+		var done: bool = Meta.quests.has(q.id) or p[0] >= p[1]
+		var prog := ""
+		if not done and int(p[1]) > 1:
+			if q.check.get("run") == "seconds":
+				prog = "  %s/%s" % [UI.time_text(p[0]), UI.time_text(p[1])]
+			else:
+				prog = "  %d/%d" % [mini(p[0], p[1]), p[1]]
+		box.add_child(UI.body(("+ " if done else "- ") + q.desc + prog, 10, UI.GOLD if done else UI.DIM))
+
+func quest_state() -> Dictionary:
+	var bosses := 0
+	for h in heroes.values():
+		bosses += h.bosses
+	return {"relic": relic_found, "boss_kinds": boss_kinds, "team_kinds": team_kinds,
+		"bosses": bosses, "seconds": int(time)}
+
+## Host/solo: tell the player the moment a quest they haven't done is met.
+## (It's saved, and its silver paid, when the run ends.)
+func _check_quests(delta: float) -> void:
+	_quest_clock -= delta
+	if _quest_clock > 0.0:
+		return
+	_quest_clock = 0.5
+	var st := quest_state()
+	for q in Db.quests_for(stage_id):
+		if Meta.quests.has(q.id) or _quest_told.has(q.id) or not Db.quest_met(q.check, st):
+			continue
+		_quest_told[q.id] = true
+		hud.toast("QUEST COMPLETE: " + q.name, UI.GOLD)
+		if autoplay:
+			print("[quest] complete: %s at %s" % [q.id, UI.time_text(time)])
+		if netsync:
+			for seat in heroes:
+				if not _is_local(heroes[seat]):
+					netsync.send_quest_toast(seat, q.id, q.name)
+
 func summary_for(h) -> Dictionary:
 	var seconds := int(time)
 	var earned := int((h.silver_found + seconds / 10) * (1.0 + h.stats.greed) * (1.0 + stage.get("silver_bonus", 0.0)))
@@ -841,7 +941,7 @@ func summary_for(h) -> Dictionary:
 		"candy": h.candy, "healed": int(h.healed), "evolutions": h.evolutions, "unions": h.unions,
 		"weapons_full": h.weapons_full, "silver": earned, "distance": int(h.distance / 16.0),
 		"char": h.char_id, "kinds": h.kind_kills, "evolved": h.made, "seen": seen, "team": heroes.size(),
-		"stage": stage_id}
+		"stage": stage_id, "quest": quest_state()}
 
 func _on_hero_down(h) -> void:
 	if ended:
@@ -875,7 +975,7 @@ func _game_over() -> void:
 ## Results for this device's hero; saves the run to the profile.
 func show_results(r: Dictionary) -> void:
 	ended = true
-	var result := {"best": false, "feats": [], "unlocks": []}
+	var result := {"best": false, "feats": [], "unlocks": [], "quests": [], "crowned": false}
 	if not dev:
 		result = Meta.finish_run(r)
 		if autoplay:
@@ -891,6 +991,12 @@ func show_results(r: Dictionary) -> void:
 		box.add_child(UI.label("FEAT: " + Db.FEATS[f].name, 8, UI.GOLD))
 	for id in result.unlocks:
 		box.add_child(_unlock_row(id))
+	for id in result.get("quests", []):
+		for q in Db.quests_for(stage_id):
+			if q.id == id:
+				box.add_child(UI.label("QUEST: %s  +%d silver" % [q.name, q.silver], 8, UI.GOLD))
+	if result.get("crowned", false):
+		box.add_child(UI.label("MAP CROWNED!  +%d silver" % Db.QUEST_CROWN_SILVER, 10, UI.GOLD))
 	var again := UI.button("PLAY AGAIN", func():
 		get_tree().paused = false
 		Net.leave()

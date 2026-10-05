@@ -124,6 +124,7 @@ func _draw() -> void:
 		_slot(Vector2(x, y), Db.PASSIVES[id].icon, p.passives[id], false)
 		x += 20
 	_offscreen_arrows(view)
+	_relic_arrow(view)
 	# Touch joystick.
 	var js: Dictionary = p.joystick()
 	if js.active:
@@ -163,6 +164,32 @@ func _offscreen_arrows(view: Vector2) -> void:
 		lp.x = clampf(lp.x, 2.0, view.x - lw - 2.0)
 		lp.y = clampf(lp.y, 10.0, view.y - 2.0)
 		_text(lp, label, 8, col, HORIZONTAL_ALIGNMENT_LEFT, body_font)
+
+## A gold arrow at the screen edge toward this map's relic, until it's found
+## (and only while this player still has that quest to do).
+func _relic_arrow(view: Vector2) -> void:
+	if run.relic == null or run.relic_found:
+		return
+	for q in Db.quests_for(run.stage_id):
+		if q.check.has("relic") and Meta.quests.has(q.id):
+			return
+	var d: Vector2 = run.relic_pos - run.camera.position
+	var half := view * 0.5
+	if absf(d.x) < half.x - 4.0 and absf(d.y) < half.y - 4.0:
+		return
+	var inset := half - Vector2(14, 14)
+	var k := minf(inset.x / maxf(absf(d.x), 0.001), inset.y / maxf(absf(d.y), 0.001))
+	var at := half + d * k
+	var dir := d.normalized()
+	var pulse := 0.75 + sin(Time.get_ticks_msec() / 200.0) * 0.25
+	var col := Color(1.0, 0.85, 0.3, pulse)
+	var tip := at + dir * 7.0
+	var side := dir.orthogonal() * 5.0
+	var pts := PackedVector2Array([tip, at - dir * 4.0 + side, at - dir * 4.0 - side])
+	draw_colored_polygon(pts, col)
+	draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[0]]), Color.BLACK, 1.0)
+	var lp := at - dir * 12.0 + Vector2(-3, 3)
+	_text(lp, "?", 8, col, HORIZONTAL_ALIGNMENT_LEFT, body_font)
 
 func _slot(at: Vector2, icon_id: String, lv: int, evolved: bool) -> void:
 	draw_rect(Rect2(at, Vector2(18, 18)), Color(0, 0, 0, 0.55))
