@@ -485,5 +485,6 @@ func _jagged(ci: CanvasItem, a: Vector2, b: Vector2, c: Color) -> void:
 	for k in range(1, n):
 		pts.append(a.lerp(b, float(k) / n) + side * randf_range(-4, 4))
 	pts.append(b)
-	ci.draw_polyline(pts, Color(c, c.a * 0.5), 3.0)
-	ci.draw_polyline(pts, c, 1.0)
+	# coloured glow, hot near-white core
+	ci.draw_polyline(pts, Color(c, c.a * 0.6), 3.0)
+	ci.draw_polyline(pts, Color(c.lerp(Color.WHITE, 0.7), c.a), 1.0)

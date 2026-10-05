@@ -320,7 +320,7 @@ const WEAPONS := {
 	},
 	"chain_lightning": {
 		"name": "Chain Lightning", "quote": "It's electric!", "icon": "chain_lightning_skill", "locked": true,
-		"behavior": "chain", "color": Color(0.6, 0.85, 1.0),
+		"behavior": "chain", "color": Color(1.0, 0.85, 0.2),
 		"base": {"cooldown": 2.0, "damage": 12.0, "amount": 3, "range": 140.0},
 		"levels": [
 			{"desc": "Jumps 1 more", "amount": 1},
@@ -350,7 +350,7 @@ const WEAPONS := {
 	},
 	"street_lamp": {
 		"name": "Street Lamp", "quote": "Light 'em up.", "icon": "street_lamp_skill", "locked": true,
-		"behavior": "turret", "sheet": "street_lamp", "zap": 0.6,
+		"behavior": "turret", "color": Color(1.0, 0.65, 0.25), "sheet": "street_lamp", "zap": 0.6,
 		"base": {"cooldown": 6.0, "damage": 10.0, "duration": 8.0, "amount": 1, "range": 80.0},
 		"levels": [
 			{"desc": "1 more lamp", "amount": 1},
@@ -468,13 +468,13 @@ const WEAPONS := {
 		"evolution": true, "behavior": "strike", "sheet": "eldritch_rift", "target": "random", "strike_radius": 36.0, "sheet_scale": 1.0,
 		"base": {"cooldown": 1.0, "damage": 90.0, "amount": 4, "knockback": 100.0}},
 	"arc_reactor": {"name": "Arc Reactor", "quote": "It's VERY electric!", "icon": "arc_reactor_skill",
-		"evolution": true, "tint": Color(0.5, 0.7, 1.0), "behavior": "chain", "color": Color(0.8, 0.95, 1.0),
+		"evolution": true, "tint": Color(0.5, 0.7, 1.0), "behavior": "chain", "color": Color(0.2, 0.95, 1.0),
 		"base": {"cooldown": 0.8, "damage": 35.0, "amount": 10, "range": 180.0}},
 	"river_of_blood": {"name": "River of Blood", "quote": "Leave a LOT of marks.", "icon": "river_of_blood_skill",
 		"evolution": true, "tint": Color(1.0, 0.4, 0.4), "behavior": "trail", "sheet": "blood_drop", "tick": 0.25, "lifesteal": 0.02,
 		"base": {"cooldown": 0.15, "damage": 16.0, "duration": 4.0, "area": 2.0}},
 	"haunted_boulevard": {"name": "Haunted Boulevard", "quote": "The whole street's lit.", "icon": "haunted_boulevard_skill",
-		"evolution": true, "behavior": "turret", "sheet": "haunted_lamp", "zap": 0.3,
+		"evolution": true, "behavior": "turret", "color": Color(0.45, 1.0, 0.9), "sheet": "haunted_lamp", "zap": 0.3,
 		"base": {"cooldown": 3.0, "damage": 30.0, "duration": 12.0, "amount": 5, "range": 120.0}},
 	"van_helsing": {"name": "Van Helsing", "quote": "Professional help.", "icon": "van_helsing_skill",
 		"evolution": true, "behavior": "shooter", "sheet": "silver_stake", "aim": "nearest", "rot_offset": PI / 2,
@@ -489,7 +489,7 @@ const WEAPONS := {
 
 	# ================================================================ Unions
 	"plasma_storm": {"name": "Plasma Storm", "quote": "FLAMIN HOT and shocking.", "icon": "plasma_storm_skill",
-		"evolution": true, "union": true, "tint": Color(1.0, 0.6, 1.0), "behavior": "chain", "color": Color(1.0, 0.6, 0.9), "explode": 30.0,
+		"evolution": true, "union": true, "tint": Color(1.0, 0.6, 1.0), "behavior": "chain", "color": Color(1.0, 0.25, 0.85), "explode": 30.0,
 		"base": {"cooldown": 0.9, "damage": 50.0, "amount": 8, "range": 180.0}},
 	"ricochet_royale": {"name": "Ricochet Royale", "quote": "OY MATE, heads or tails?", "icon": "ricochet_royale_skill",
 		"evolution": true, "union": true, "behavior": "bounce", "sheet": "royale_rang",

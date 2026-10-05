@@ -496,12 +496,12 @@ def evo_cards():
     for p0, p1 in zip(pts, pts[1:]):
         mx, my = (p0[0] + p1[0]) / 2 + 5, (p0[1] + p1[1]) / 2 + 4
         for a2, b2 in [(p0, (mx, my)), ((mx, my), p1)]:
-            thick(it, *a2, *b2, 1.4, hexc("7ad7ff"))
-            line(it, *a2, *b2, hexc("ffffff"))
+            thick(it, *a2, *b2, 1.4, hexc("ffd23a"))
+            line(it, *a2, *b2, hexc("fff8d0"))
     for (x, y) in pts:
         rows(it, x - 4, y - 4, [".bbbbbb.", "bbbbbbbb", "bkkbbkkb", "bkkbbkkb", "bbbbbbbb", ".bbkkbb.", ".b.b.b.."],
              {"b": hexc("eef3ff"), "k": hexc("1a2448")})
-    t["chain_lightning_skill"] = item_on_card(card(hexc("06102a"), hexc("0f2456"), hexc("183a84")), it, hexc("02050f"))
+    t["chain_lightning_skill"] = item_on_card(card(hexc("1a1404"), hexc("3d300a"), hexc("665010")), it, hexc("0a0802"))
 
     # Night Parade: a bat, a wisp and a ghost marching
     it = new(64, 64)
