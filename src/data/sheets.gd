@@ -82,5 +82,9 @@ const SHEETS := {
 	"spirit_bat": {"path": "spirit_bat", "frames": 4, "fps": 12},
 	"bomb_blast": {"path": "bomb_blast", "frames": 8, "fps": 16},
 	"judgment_sword": {"path": "judgment_sword", "frames": 10, "fps": 12},
+	"prop_blood_fountain": {"path": "prop_blood_fountain", "frames": 4, "fps": 6},
+	"prop_obelisk": {"path": "prop_obelisk", "frames": 4, "fps": 6},
+	"prop_sewer_pipe": {"path": "prop_sewer_pipe", "frames": 4, "fps": 6},
+	"prop_candelabra": {"path": "prop_candelabra", "frames": 4, "fps": 6},
 	"crosshair": {"path": "crosshair_new", "frames": 1, "fps": 1},
 }

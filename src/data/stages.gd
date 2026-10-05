@@ -6,13 +6,14 @@ extends RefCounted
 #   spawns: while from <= minute < to, keep spawning `enemy` at `rate`/s.
 #   events: one-shot at `at` minutes: "ring" circles the player, "boss" spawns
 #           a big version that drops a chest.
+# props_per_chunk: [min, max] props tried per 160px chunk (default [0, 3]).
 # Modifiers: hp_per_minute (how fast monsters toughen), speed_mul (monster
 # speed), silver_bonus (extra silver at the end). `locked` stages need the feat
 # that lists them in progression.gd.
 const STAGES := {
 	"graveyard": {
 		"name": "The Graveyard", "about": "Where it all started.", "ground": "gamebg", "hp_per_minute": 0.35, "max_alive": 600,
-		"obstacles": ["grave_1_small", "grave_2", "tree", "tree_2", "tree_3", "tree_4", "tree_5", "tree_6", "street_lamp", "mausoleum"],
+		"obstacles": ["grave_1_small", "grave_2", "tree", "tree_2", "tree_3", "tree_4", "tree_5", "tree_6", "street_lamp", "mausoleum", "prop_angel", "prop_open_grave"],
 		"spawns": [
 			{"enemy": "zombie", "from": 0.0, "to": 3.0, "rate": 0.6},
 			{"enemy": "skull", "from": 0.75, "to": 5.0, "rate": 0.4},
@@ -42,7 +43,9 @@ const STAGES := {
 		"name": "Crimson Crypt", "about": "The graveyard under a blood moon. Harder from the first minute.",
 		"ground": "gamebg", "tint": Color(1.0, 0.55, 0.55), "hp_per_minute": 0.5, "max_alive": 600, "locked": true,
 		"silver_bonus": 0.5,
-		"obstacles": ["grave_1_small", "grave_2", "tree", "tree_2", "tree_5", "tree_6", "mausoleum"],
+		"props_per_chunk": [1, 4],
+		"obstacles": ["grave_1_small", "grave_2", "tree_5", "tree_6", "mausoleum", "prop_blood_fountain", "prop_gibbet", "prop_obelisk", "prop_angel", "prop_open_grave"],
+		"decor": ["blood", "prop_bones"],
 		"spawns": [
 			{"enemy": "skull", "from": 0.0, "to": 4.0, "rate": 1.0},
 			{"enemy": "ghost", "from": 0.0, "to": 6.0, "rate": 0.6},
@@ -67,7 +70,8 @@ const STAGES := {
 	"pumpkin_patch": {
 		"name": "Pumpkin Patch", "about": "Rows of grinning gourds, and something in the corn.",
 		"ground": "ground_pumpkin", "hp_per_minute": 0.4, "max_alive": 600, "locked": true, "silver_bonus": 0.2,
-		"obstacles": ["tree_3", "tree_4", "tree_owl", "candybasket", "grave_2", "street_lamp"],
+		"props_per_chunk": [1, 4],
+		"obstacles": ["tree_3", "tree_owl", "candybasket", "street_lamp", "prop_hay_bale", "prop_pumpkin_pile", "prop_corn", "prop_fence", "prop_scarecrow"],
 		"spawns": [
 			{"enemy": "pumpkin", "from": 0.0, "to": 6.0, "rate": 1.0},
 			{"enemy": "zombie", "from": 0.0, "to": 4.0, "rate": 0.4},
@@ -91,7 +95,8 @@ const STAGES := {
 		"name": "Snowbound Cemetery", "about": "Fresh snow, fast feet. Everything out here is in a hurry.",
 		"ground": "ground_snow", "hp_per_minute": 0.4, "max_alive": 600, "locked": true, "silver_bonus": 0.3,
 		"speed_mul": 1.15,
-		"obstacles": ["tree", "tree_2", "tree_5", "tree_6", "tree_owl", "grave_1_small", "grave_2", "mausoleum"],
+		"props_per_chunk": [1, 4],
+		"obstacles": ["tree_5", "tree_6", "grave_1_small", "mausoleum", "prop_snow_pine", "prop_snowman", "prop_ice_grave", "prop_snow_angel"],
 		"spawns": [
 			{"enemy": "ghost", "from": 0.0, "to": 30.0, "rate": 0.6},
 			{"enemy": "skull", "from": 0.0, "to": 30.0, "rate": 0.8},
@@ -112,8 +117,9 @@ const STAGES := {
 	"sewers": {
 		"name": "The Sewers", "about": "Wide open tunnels. Nowhere to hide from what crawls up the drains.",
 		"ground": "ground_sewer", "hp_per_minute": 0.45, "max_alive": 600, "locked": true, "silver_bonus": 0.4,
-		"obstacles": ["street_lamp", "grave_2"],
-		"decor": ["sewer", "skull", "blood"],
+		"props_per_chunk": [1, 4],
+		"obstacles": ["street_lamp", "prop_sewer_pipe", "prop_barrels", "prop_brick_pillar"],
+		"decor": ["sewer", "skull", "blood", "prop_bones"],
 		"spawns": [
 			{"enemy": "zombie", "from": 0.0, "to": 30.0, "rate": 1.0},
 			{"enemy": "swampthing", "from": 1.0, "to": 30.0, "rate": 0.35},
@@ -132,8 +138,9 @@ const STAGES := {
 	"crypt_depths": {
 		"name": "Crypt Depths", "about": "Deep under the graveyard, where the bosses sleep. Not for long.",
 		"ground": "ground_crypt", "hp_per_minute": 0.6, "max_alive": 600, "locked": true, "silver_bonus": 0.6,
-		"obstacles": ["mausoleum", "grave_1_small", "grave_2", "street_lamp"],
-		"decor": ["skull", "blood"],
+		"props_per_chunk": [1, 4],
+		"obstacles": ["mausoleum", "grave_1_small", "prop_sarcophagus", "prop_broken_pillar", "prop_candelabra", "prop_open_grave"],
+		"decor": ["skull", "blood", "prop_bones"],
 		"spawns": [
 			{"enemy": "skull", "from": 0.0, "to": 30.0, "rate": 1.2},
 			{"enemy": "shadowbeast", "from": 0.5, "to": 30.0, "rate": 0.5},

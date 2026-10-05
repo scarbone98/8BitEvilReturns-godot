@@ -25,6 +25,27 @@ const PROPS := {
 	"mausoleum": {"r": 30.0, "oy": 14.0, "rare": true},
 	"tree_owl": {"r": 7.0, "sheet": "tree_owl", "rare": true},
 	"candybasket": {"r": 7.0},
+	# Drawn by tools/draw_props.py
+	"prop_angel": {"r": 7.0, "rare": true},
+	"prop_open_grave": {"r": 10.0},
+	"prop_blood_fountain": {"r": 16.0, "oy": 4.0, "sheet": "prop_blood_fountain", "rare": true},
+	"prop_gibbet": {"r": 6.0},
+	"prop_obelisk": {"r": 7.0, "sheet": "prop_obelisk", "rare": true},
+	"prop_hay_bale": {"r": 13.0},
+	"prop_pumpkin_pile": {"r": 12.0},
+	"prop_corn": {"r": 8.0},
+	"prop_fence": {"r": 12.0},
+	"prop_scarecrow": {"r": 5.0, "rare": true},
+	"prop_snow_pine": {"r": 8.0, "rare": true},
+	"prop_snowman": {"r": 7.0},
+	"prop_ice_grave": {"r": 10.0},
+	"prop_snow_angel": {"r": 7.0, "rare": true},
+	"prop_sewer_pipe": {"r": 16.0, "oy": 6.0, "sheet": "prop_sewer_pipe"},
+	"prop_barrels": {"r": 13.0},
+	"prop_brick_pillar": {"r": 8.0},
+	"prop_sarcophagus": {"r": 15.0, "oy": 4.0},
+	"prop_broken_pillar": {"r": 8.0},
+	"prop_candelabra": {"r": 4.0, "sheet": "prop_candelabra"},
 }
 
 # Flat things lying on the ground: drawn under everything, no collision.
@@ -32,12 +53,14 @@ const DECOR := {
 	"sewer": {},
 	"skull": {},
 	"blood": {},
+	"prop_bones": {},
 }
 
 var run
 var kinds: Array = []
 var _commons: Array = []  # this stage's non-rare props, to swap in for rare ones
 var _decor: Array = []    # this stage's flat decor kinds
+var _density := Vector2i(0, 3)  # props tried per chunk (min, max)
 var layer: Node2D  # the run's y-sorted layer: props are sprites in it, next to the heroes
 var _chunks := {}  # Vector2i -> Array of {kind, pos (feet), c (collision centre), r, rect, sprite}
 var _anim := 0.0
@@ -47,12 +70,14 @@ func setup(stage: Dictionary) -> void:
 	kinds = stage.obstacles
 	_commons = kinds.filter(func(k): return not PROPS[k].get("rare", false))
 	_decor = stage.get("decor", [])
+	var d: Array = stage.get("props_per_chunk", [0, 3])
+	_density = Vector2i(d[0], d[1])
 
 func _chunk_props(c: Vector2i) -> Array:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(c) ^ 0x8b17e1
 	var out := []
-	var n := rng.randi_range(0, 3)
+	var n := rng.randi_range(_density.x, _density.y)
 	for k in n:
 		var kind: String = kinds[rng.randi() % kinds.size()]
 		if PROPS[kind].get("rare", false) and rng.randf() < 0.55 and not _commons.is_empty():
