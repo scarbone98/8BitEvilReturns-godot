@@ -422,6 +422,168 @@ def card_sacred_heart():
     paste(c, item, 32 - item.width // 2, 32 - item.height // 2)
     return c
 
+
+# ================================================================ evolutions
+
+def hellfire_shot():
+    # A horned skull in red-black hellfire, flying right. 32x16, 6 frames.
+    bone, bone2, ol = hexc("f2e6d0"), hexc("b9a98c"), hexc("120406")
+    eye, horn = hexc("ffdf4a"), hexc("3a0c12")
+    c0, c1, c2, c3 = hexc("fff0b0"), hexc("ffa12b"), hexc("e0381c"), hexc("6a0c22")
+    frames = []
+    for k in range(6):
+        im = new(32, 16)
+        for i in range(22):
+            x = 21 - i
+            amp = 5.5 - i * 0.22
+            wob = math.sin(k * 1.05 + i * 0.7) * 1.4
+            for y in range(16):
+                d = abs(y + 0.5 - (8 + wob * 0.5))
+                if d < amp:
+                    if (x * 7 + y * 3 + k * 5) % 9 == 0 and d > amp * 0.6:
+                        continue
+                    c = c3 if d > amp * 0.75 else c2 if d > amp * 0.45 else c1 if d > amp * 0.2 else c0
+                    put(im, x, y, c)
+        # embers
+        for j in range(3):
+            put(im, (5 + j * 6 + k * 3) % 18, 2 + (j * 5 + k) % 12, c1)
+        rows(im, 20, 3, [
+            "k.......k.",
+            ".k.bbbbbk.",
+            "..bbbbbbb.",
+            ".bbbbbbbbb",
+            ".bEEbbEEbc",
+            ".bbbbccbbc",
+            "..bbbbbbc.",
+            "..mbmbmb..",
+            "...b.b.b..",
+        ], {"b": bone, "c": bone2, "m": hexc("7a6a52"), "E": eye, "k": horn})
+        outline(im, ol)
+        frames.append(im)
+    return frames
+
+def blood_moon_shot():
+    # A crescent blade of blood moon. 16x16 (the game spins it).
+    rim, mid, dark, deep = hexc("ffb1a4"), hexc("e0283a"), hexc("8e0f24"), hexc("4a0414")
+    im = new(16, 16)
+    for y in range(16):
+        for x in range(16):
+            a = math.hypot(x + 0.5 - 8, y + 0.5 - 8)
+            b = math.hypot(x + 0.5 - 11, y + 0.5 - 6)
+            if a < 7.2 and b > 5.6:
+                c = mid
+                if a > 6.0:
+                    c = rim if (x + y) < 15 else dark
+                elif b < 7.0:
+                    c = deep
+                put(im, x, y, c)
+    outline(im, hexc("1c0207"))
+    return im
+
+def soul_eater_shot():
+    # A violet blade with souls streaming off it, pointing up-right. 32x32, 4 frames.
+    blade, blade2, edge = hexc("e9d7ff"), hexc("a374ff"), hexc("5b2aa8")
+    hilt, gem, ol = hexc("2a1240"), hexc("ff4d9a"), hexc("0c0414")
+    soul, soul2 = hexc("c9b6ff", 200), hexc("8d6bff", 150)
+    frames = []
+    for k in range(4):
+        im = new(32, 32)
+        # two little ghosts drifting off the blade, waving
+        ghost = [[".ggg.", "gGgGg", "ggggg", "ggggg", "g.g.g"],
+                 [".ggg.", "gGgGg", "ggggg", "ggggg", ".g.g."]]
+        for j, (gx, gy) in enumerate([(2, 9), (17, 18)]):
+            t = (k + j * 2) % 4
+            rows(im, gx, gy - (1 if t in (1, 2) else 0), ghost[(k + j) % 2],
+                 {"g": hexc("d9ccff"), "G": hexc("2a1240")})
+        # blade from (8,23) to (28,3)
+        for i in range(21):
+            x, y = 8 + i, 23 - i
+            put(im, x, y, blade)
+            put(im, x + 1, y, blade2)
+            put(im, x, y - 1, edge if i < 19 else blade)
+        put(im, 29, 2, blade)
+        # crossguard and hilt
+        line(im, 4, 22, 10, 28, hilt)
+        line(im, 5, 22, 10, 27, edge)
+        line(im, 3, 28, 7, 24, hilt)
+        line(im, 2, 29, 4, 27, hilt)
+        put(im, 7, 25, gem)
+        outline(im, ol)
+        frames.append(im)
+    return frames
+
+def gatling_bolt():
+    # A golden bolt with red fletching, pointing up-right like the crossbow bolt. 16x16.
+    im = new(16, 16)
+    shaft, shaft2, tip, tip2, fl = hexc("e8b84a"), hexc("9c6a18"), hexc("ffffff"), hexc("b8c4d8"), hexc("d8283a")
+    for i in range(11):
+        put(im, 3 + i, 12 - i, shaft)
+        put(im, 4 + i, 12 - i, shaft2)
+    rows(im, 12, 1, [".tT", "ttT", "TT."], {"t": tip, "T": tip2})
+    rows(im, 1, 11, ["f..", "ff.", ".ff", "..f"], {"f": fl})
+    outline(im, hexc("2a1806"))
+    return im
+
+def card_hellfire():
+    it = new(64, 64)
+    sk = hellfire_shot()[2].resize((64, 32), Image.NEAREST)
+    paste(it, sk, 0, 16)
+    return item_on_card(card(hexc("1f0406"), hexc("4a0a10"), hexc("7a1414")), it, hexc("0a0102"))
+
+def card_blood_moon():
+    it = new(64, 64)
+    m = blood_moon_shot().resize((48, 48), Image.NEAREST)
+    paste(it, m, 6, 8)
+    bat = ["b...b", "bbbbb", ".bbb.", "..b.."]
+    for (x, y) in [(46, 40), (40, 48), (50, 50)]:
+        rows(it, x, y, ["b.....b", "bb.b.bb", "bbbbbbb", ".bbbbb.", "...b..."], {"b": hexc("1a0a14")})
+    c = card(hexc("0a0614"), hexc("2a0c24"), hexc("4e1230"))
+    outline(it, hexc("05020a"))
+    bb = it.getbbox(); item = it.crop(bb)
+    paste(c, item, 32 - item.width // 2, 32 - item.height // 2)
+    return c
+
+def card_soul_eater():
+    it = new(64, 64)
+    sw = soul_eater_shot()[1].resize((64, 64), Image.NEAREST)
+    paste(it, sw, 0, 0)
+    c = card(hexc("120624"), hexc("2c0f52"), hexc("4a1d82"))
+    bb = it.getbbox(); item = it.crop(bb)
+    paste(c, item, 32 - item.width // 2, 32 - item.height // 2)
+    return c
+
+def card_gatling_crossbow():
+    it = new(64, 64)
+    wood, wood_l, wood_d = hexc("8a4f22"), hexc("c07a3a"), hexc("4a2610")
+    steel, steel_l, steel_d = hexc("7a8296"), hexc("c4ccd9"), hexc("3a3f4c")
+    gold, string = hexc("e8b84a"), hexc("efe6d2")
+    # stock from the lower left to the front (upper right)
+    thick(it, 8, 56, 40, 24, 3.4, wood)
+    thick(it, 7, 54, 38, 23, 1.2, wood_l)
+    thick(it, 10, 58, 42, 26, 0.8, wood_d)
+    # curved bow limbs across the front, perpendicular to the stock
+    for i in range(-14, 15):
+        t = i / 14.0
+        bx = 38 + i * 0.75 + (1 - t * t) * 3.5
+        by = 26 + i * 0.75 - (1 - t * t) * 3.5
+        disc(it, bx, by, 1.8 if abs(i) < 12 else 1.2, wood_d if abs(i) > 10 else wood_l)
+    line(it, 27, 15, 49, 37, string)
+    line(it, 27, 15, 33, 31, string)
+    line(it, 49, 37, 33, 31, string)
+    # the gatling drum on top of the stock, bolts sticking out the front
+    disc(it, 24, 40, 7.5, steel)
+    disc(it, 23, 39, 5, steel_l)
+    disc(it, 24, 40, 2.2, steel_d)
+    for a in range(6):
+        ang = a * math.pi / 3 + 0.3
+        x, y = 24 + math.cos(ang) * 5.5, 40 + math.sin(ang) * 5.5
+        put(it, x, y, steel_d)
+    # bolts flying out up-right
+    for (x, y) in [(58, 6), (52, 2), (60, 14)]:
+        thick(it, x - 7, y + 7, x, y, 0.6, gold)
+        rows(it, x - 1, y - 1, ["ww", "w."], {"w": hexc("ffffff")})
+    return item_on_card(card(hexc("2a1004"), hexc("5a2a08"), hexc("8a4a10")), it, hexc("120602"))
+
 if __name__ == "__main__":
     save(wood_stake(), "wood_stake_shot")
     save(sheet(candy_shot()), "candy_shot")
@@ -435,3 +597,11 @@ if __name__ == "__main__":
     save(card_silver_coin(), "silver_coin_skill")
     save(card_skull_toss(), "skull_toss_skill")
     save(card_sacred_heart(), "sacred_heart_skill")
+    save(sheet(hellfire_shot()), "hellfire_shot")
+    save(blood_moon_shot(), "blood_moon_shot")
+    save(sheet(soul_eater_shot()), "soul_eater_shot")
+    save(gatling_bolt(), "gatling_bolt")
+    save(card_hellfire(), "hellfire_skill")
+    save(card_blood_moon(), "blood_moon_skill")
+    save(card_soul_eater(), "soul_eater_skill")
+    save(card_gatling_crossbow(), "gatling_crossbow_skill")

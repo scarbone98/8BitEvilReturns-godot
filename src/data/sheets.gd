@@ -60,5 +60,9 @@ const SHEETS := {
 	"coin_spin": {"path": "coin_spin", "frames": 6, "fps": 12},
 	"flame_skull": {"path": "flame_skull", "frames": 4, "fps": 10},
 	"sacred_heart": {"path": "sacred_heart", "frames": 4, "fps": 8},
+	"hellfire_shot": {"path": "hellfire_shot", "frames": 6, "fps": 12},
+	"blood_moon_shot": {"path": "blood_moon_shot", "frames": 1, "fps": 1},
+	"soul_eater_shot": {"path": "soul_eater_shot", "frames": 4, "fps": 8},
+	"gatling_bolt": {"path": "gatling_bolt", "frames": 1, "fps": 1},
 	"crosshair": {"path": "crosshair_new", "frames": 1, "fps": 1},
 }
