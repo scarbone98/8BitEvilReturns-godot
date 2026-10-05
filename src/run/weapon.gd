@@ -136,9 +136,15 @@ func fire() -> bool:
 				any = true
 			return any
 		"orbit":
-			if shots.count_for(self) > 0:
-				return true
 			var n := amount()
+			var have: int = shots.count_for(self)
+			if have == n:
+				return true
+			if have > 0:
+				# A level-up changed the count: re-form the circle evenly.
+				if raw("duration") < 100.0:
+					return true  # timed orbits just finish their spin first
+				shots.clear_for(self)
 			for k in n:
 				shots.orbit(self, TAU * k / n)
 		"flask":
@@ -173,8 +179,15 @@ func fire() -> bool:
 				return false
 			_smite()
 		"bounce":
-			for k in amount():
-				shots.bounce(self, Vector2.RIGHT.rotated(randf() * TAU))
+			var n := amount()
+			var aim: Vector2 = Vector2.RIGHT.rotated(randf() * TAU)
+			if def.get("retarget", false):
+				var i: int = e.nearest(p, 220.0)
+				if i != -1:
+					aim = (e.pos[i] - p).normalized()
+			for k in n:
+				var dir := aim.rotated(TAU * k / n) if def.get("retarget", false) else Vector2.RIGHT.rotated(randf() * TAU)
+				shots.bounce(self, dir)
 		"chain":
 			return _chain()
 		"trail":

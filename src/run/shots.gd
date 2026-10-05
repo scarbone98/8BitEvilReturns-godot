@@ -19,6 +19,9 @@ func _add(w: Weapon, type: String, extra: Dictionary) -> Dictionary:
 	list.append(s)
 	return s
 
+func clear_for(w: Weapon) -> void:
+	list = list.filter(func(s): return s.w != w or s.type == "fx" or s.type == "zap")
+
 func count_for(w: Weapon) -> int:
 	var n := 0
 	for s in list:
@@ -95,7 +98,7 @@ func nova(w: Weapon) -> void:
 
 func bounce(w: Weapon, dir: Vector2) -> void:
 	_add(w, "bounce", {"vel": dir * w.speed(), "life": w.duration(), "pierce": -1, "rehit": 0.4,
-		"radius": 6.0 * w.area()})
+		"radius": (8.0 if w.def.get("retarget", false) else 6.0) * w.area()})
 
 func turret(w: Weapon, at: Vector2) -> void:
 	_add(w, "turret", {"pos": run.obstacles.free_spot(at, 6.0), "life": w.duration(), "next_zap": 0.0})
@@ -210,7 +213,7 @@ func step(delta: float) -> void:
 			"orbit":
 				s.angle += deg_to_rad(s.w.speed() * 4.0) * delta
 				s.pos = owner_pos + Vector2.RIGHT.rotated(s.angle) * s.orbit
-				s.rot = s.angle + s.w.def.get("rot_offset", 0.0)
+				s.rot = 0.0 if s.w.def.get("upright", false) else s.angle + s.w.def.get("rot_offset", 0.0)
 				_touch(s, s.radius)
 			"flask":
 				var k: float = clampf(s.t / s.life, 0.0, 1.0)
@@ -255,14 +258,25 @@ func step(delta: float) -> void:
 				_touch(s, s.radius)
 			"bounce":
 				s.pos += s.vel * delta
-				s.rot += delta * 10.0
 				var view: Rect2 = run.view_rect_for(s.w.player)
+				var bounced := false
 				if s.pos.x < view.position.x or s.pos.x > view.end.x:
 					s.vel.x = -s.vel.x
 					s.pos.x = clampf(s.pos.x, view.position.x, view.end.x)
+					bounced = true
 				if s.pos.y < view.position.y or s.pos.y > view.end.y:
 					s.vel.y = -s.vel.y
 					s.pos.y = clampf(s.pos.y, view.position.y, view.end.y)
+					bounced = true
+				if s.w.def.get("retarget", false):
+					# Off the wall, straight at the nearest monster.
+					if bounced:
+						var n: int = e.nearest(s.pos, 400.0)
+						if n != -1:
+							s.vel = (e.pos[n] - s.pos).normalized() * s.vel.length()
+					s.rot = s.vel.angle() + s.w.def.get("rot_offset", 0.0)
+				elif not s.w.def.get("upright", false):
+					s.rot += delta * 10.0
 				_touch(s, s.radius)
 			"turret":
 				s.next_zap -= delta

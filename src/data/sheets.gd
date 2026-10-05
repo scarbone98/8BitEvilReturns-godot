@@ -55,6 +55,10 @@ const SHEETS := {
 	# Single-image projectiles
 	"skull_icon": {"path": "skull", "frames": 1, "fps": 1},
 	"blood_drop": {"path": "blood", "frames": 1, "fps": 1},
-	"wood_stake": {"path": "wood_particle", "frames": 1, "fps": 1},
+	"wood_stake": {"path": "wood_stake_shot", "frames": 1, "fps": 1},
+	"candy_shot": {"path": "candy_shot", "frames": 2, "fps": 12},
+	"coin_spin": {"path": "coin_spin", "frames": 6, "fps": 12},
+	"flame_skull": {"path": "flame_skull", "frames": 4, "fps": 10},
+	"sacred_heart": {"path": "sacred_heart", "frames": 4, "fps": 8},
 	"crosshair": {"path": "crosshair_new", "frames": 1, "fps": 1},
 }

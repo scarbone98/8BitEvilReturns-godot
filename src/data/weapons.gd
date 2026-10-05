@@ -18,14 +18,16 @@ extends RefCounted
 ##             amount adds the other side, then rows above and below
 ##   boomerang out and back, hits on both legs
 ##   strike    instant hit at enemies; target = random | nearest, warn = seconds of crosshair first
-##   orbit     circles the hero for `duration`
+##   orbit     circles the hero for `duration` (speed = spin); `upright` keeps the
+##             sprite unrotated. A level-up that changes the count re-forms the circle.
 ##   flask     lobbed; lands as a pool (pool_sheet) or explodes (explode)
 ##   summon    bats that hunt for `duration`; extra_wisps adds seekers too
 ##   seeker    homing shots that burn through `pierce` enemies
 ##   aura      a permanent damaging ring around the hero
 ##   nova      an expanding ring from the hero; heal = hp per pulse, smite = also hit the screen
 ##   smite     hits everything on screen
-##   bounce    ricochets off the screen edges for `duration`
+##   bounce    ricochets off the screen edges for `duration`; `retarget` thrown at
+##             the nearest enemy and turns toward the nearest one on every bounce
 ##   chain     jumps from enemy to enemy, `amount` jumps
 ##   trail     leaves damaging pools behind while you move
 ##   turret    plants lamps that zap the nearest enemy
@@ -118,15 +120,15 @@ const WEAPONS := {
 	},
 	"cursed_sword": {
 		"name": "Cursed Sword", "quote": "BOOOOO!", "icon": "cursed_sword_skill",
-		"behavior": "orbit", "sheet": "cursed_sword", "orbit_radius": 36.0, "rot_offset": PI / 4,
-		"base": {"cooldown": 2.5, "damage": 10.0, "speed": 50.0, "duration": 2.5, "pierce": -1, "amount": 1},  # (orig) 2.5 / 10 / 50
+		"behavior": "bounce", "sheet": "cursed_sword", "retarget": true, "rot_offset": PI / 4,
+		"base": {"cooldown": 3.0, "damage": 10.0, "speed": 200.0, "duration": 2.5, "pierce": -1, "amount": 1},  # (orig) 2.5 / 10
 		"levels": [
 			{"desc": "1 more sword", "amount": 1},
 			{"desc": "+5 damage", "damage": 5.0},
-			{"desc": "Spins for longer", "duration": 0.75},
+			{"desc": "Swords fly for longer", "duration": 1.0},
 			{"desc": "1 more sword", "amount": 1},
 			{"desc": "+10 damage", "damage": 10.0},
-			{"desc": "Bigger orbit", "area": 0.25},
+			{"desc": "Bigger, faster swords", "area": 0.25, "speed": 40.0},
 			{"desc": "1 more sword", "amount": 1},
 		],
 		"evolve": {"with": "max_health", "into": "soul_eater"},
@@ -164,15 +166,16 @@ const WEAPONS := {
 	},
 	"will_o_wisp": {
 		"name": "Will-O-Wisp", "quote": "WILLY O WISPY", "icon": "wisp_skill",
-		"behavior": "seeker", "sheet": "wisp",
-		"base": {"cooldown": 4.0, "damage": 10.0, "speed": 90.0, "duration": 5.0, "amount": 1, "pierce": 3},  # (orig) 4 / 10
+		"behavior": "orbit", "sheet": "wisp", "orbit_radius": 30.0, "shot_scale": 0.5, "upright": true,
+		# speed is the spin, in quarter-degrees per second (see Shots.step)
+		"base": {"cooldown": 0.5, "damage": 10.0, "speed": 45.0, "duration": 999.0, "amount": 2, "pierce": -1},  # (orig) 10 damage
 		"levels": [
 			{"desc": "1 more wisp", "amount": 1},
 			{"desc": "+5 damage", "damage": 5.0},
-			{"desc": "Wisps burn through 2 more", "pierce": 2},
+			{"desc": "Wisps spin faster", "speed": 15.0},
 			{"desc": "1 more wisp", "amount": 1},
 			{"desc": "+5 damage", "damage": 5.0},
-			{"desc": "Faster wisps", "speed": 30.0},
+			{"desc": "Faster, wider circle", "speed": 15.0, "area": 0.25},
 			{"desc": "2 more wisps", "amount": 2},
 		],
 		"evolve": {"with": "pocket_watch", "into": "ghost_lantern"},
@@ -226,8 +229,8 @@ const WEAPONS := {
 		"evolve": {"with": "attack_up", "into": "divine_judgment"},
 	},
 	"candy_shotgun": {
-		"name": "Candy Corn Shotgun", "quote": "Trick AND treat.", "icon": "candy_corn",
-		"behavior": "shooter", "sheet": "candy_corn", "aim": "nearest", "spread": 0.22, "shot_scale": 0.5,
+		"name": "Candy Corn Shotgun", "quote": "Trick AND treat.", "icon": "candy_shotgun_skill",
+		"behavior": "shooter", "sheet": "candy_shot", "aim": "nearest", "spread": 0.22,
 		"base": {"cooldown": 1.6, "damage": 6.0, "speed": 220.0, "amount": 3, "pierce": 1, "range": 130.0},
 		"levels": [
 			{"desc": "1 more candy", "amount": 1},
@@ -256,8 +259,8 @@ const WEAPONS := {
 		"evolve": {"with": "grave_dirt", "into": "jacks_inferno"},
 	},
 	"silver_coin": {
-		"name": "Silver Coin", "quote": "Heads you lose.", "icon": "silver", "locked": true,
-		"behavior": "bounce", "sheet": "silver",
+		"name": "Silver Coin", "quote": "Heads you lose.", "icon": "silver_coin_skill", "locked": true,
+		"behavior": "bounce", "sheet": "coin_spin", "upright": true,
 		"base": {"cooldown": 4.0, "damage": 8.0, "speed": 170.0, "duration": 3.0, "pierce": -1},
 		"levels": [
 			{"desc": "1 more coin", "amount": 1},
@@ -271,8 +274,8 @@ const WEAPONS := {
 		"evolve": {"with": "lucky_trophy", "into": "jackpot"},
 	},
 	"skull_toss": {
-		"name": "Skull Toss", "quote": "Alas, poor Yorick.", "icon": "skull", "locked": true,
-		"behavior": "seeker", "sheet": "skull_icon",
+		"name": "Skull Toss", "quote": "Alas, poor Yorick.", "icon": "skull_toss_skill", "locked": true,
+		"behavior": "seeker", "sheet": "flame_skull",
 		"base": {"cooldown": 2.0, "damage": 14.0, "speed": 130.0, "duration": 3.0, "pierce": 1},
 		"levels": [
 			{"desc": "1 more skull", "amount": 1},
@@ -361,7 +364,7 @@ const WEAPONS := {
 		"evolve": {"with": "duplicator", "into": "haunted_boulevard"},
 	},
 	"wood_stake": {
-		"name": "Wood Stake", "quote": "Straight to the heart.", "icon": "wood_particle", "locked": true,
+		"name": "Wood Stake", "quote": "Straight to the heart.", "icon": "wood_stake_skill", "locked": true,
 		"behavior": "shooter", "sheet": "wood_stake", "aim": "facing", "rot_offset": PI / 2,
 		"base": {"cooldown": 1.2, "damage": 20.0, "speed": 300.0, "pierce": 3, "range": 300.0, "knockback": 70.0},
 		"levels": [
@@ -376,7 +379,7 @@ const WEAPONS := {
 		"evolve": {"with": "scope", "into": "van_helsing"},
 	},
 	"airstrike": {
-		"name": "Airstrike", "quote": "Incoming!", "icon": "crosshair_new", "locked": true,
+		"name": "Airstrike", "quote": "Incoming!", "icon": "airstrike_skill", "locked": true,
 		"behavior": "strike", "sheet": "fireball_explosion", "target": "random", "warn": 0.7,
 		"strike_radius": 30.0, "sheet_scale": 2.0, "centered": true,
 		"base": {"cooldown": 4.0, "damage": 40.0, "amount": 1, "knockback": 60.0},
@@ -426,8 +429,8 @@ const WEAPONS := {
 		"evolution": true, "tint": Color(0.7, 0.8, 1.0), "strike_radius": 30.0, "behavior": "strike", "sheet": "lightning",
 		"base": {"cooldown": 1.0, "damage": 45.0, "amount": 8, "area": 1.4}},
 	"soul_eater": {"name": "Soul Eater", "quote": "BOOOOOOOOO!", "icon": "cursed_sword_skill",
-		"evolution": true, "tint": Color(0.75, 0.45, 1.0), "orbit_radius": 44.0, "lifesteal": 0.05, "behavior": "orbit", "sheet": "cursed_sword", "rot_offset": PI / 4,
-		"base": {"cooldown": 0.2, "damage": 30.0, "speed": 70.0, "duration": 999.0, "pierce": -1, "amount": 5, "area": 1.3}},
+		"evolution": true, "tint": Color(0.75, 0.45, 1.0), "lifesteal": 0.05, "behavior": "bounce", "sheet": "cursed_sword", "retarget": true, "rot_offset": PI / 4,
+		"base": {"cooldown": 2.0, "damage": 30.0, "speed": 280.0, "duration": 4.0, "pierce": -1, "amount": 5, "area": 1.3}},
 	"toxic_flood": {"name": "Toxic Flood", "quote": "This tastes REALLY funny...", "icon": "potion_skill",
 		"evolution": true, "tint": Color(0.7, 1.0, 0.2), "tick": 0.25, "behavior": "flask", "sheet": "acid_potion", "pool_sheet": "acid_pool",
 		"base": {"cooldown": 3.0, "damage": 10.0, "duration": 5.0, "area": 1.8, "amount": 5, "range": 110.0}},
@@ -435,8 +438,8 @@ const WEAPONS := {
 		"evolution": true, "tint": Color(1.0, 0.3, 0.35), "bite": 0.3, "lifesteal": 0.03, "behavior": "summon", "sheet": "bat",
 		"base": {"cooldown": 3.0, "damage": 18.0, "speed": 210.0, "duration": 8.0, "amount": 10, "pierce": -1}},
 	"ghost_lantern": {"name": "Ghost Lantern", "quote": "WILLY O WISPIEST", "icon": "wisp_skill",
-		"evolution": true, "tint": Color(0.5, 1.0, 1.0), "behavior": "seeker", "sheet": "wisp",
-		"base": {"cooldown": 1.5, "damage": 30.0, "speed": 150.0, "duration": 6.0, "amount": 6, "pierce": 8}},
+		"evolution": true, "tint": Color(0.5, 1.0, 1.0), "behavior": "orbit", "sheet": "wisp", "orbit_radius": 40.0, "shot_scale": 0.5, "upright": true,
+		"base": {"cooldown": 0.5, "damage": 30.0, "speed": 85.0, "duration": 999.0, "amount": 7, "pierce": -1, "area": 1.2}},
 	"thriller_aura": {"name": "Thriller Aura", "quote": "The funk of forty thousand years.", "icon": "onion",
 		"evolution": true, "tint": Color(0.6, 1.0, 0.6), "behavior": "aura", "color": Color(0.5, 1.0, 0.5), "tick": 0.3,
 		"base": {"damage": 14.0, "area": 2.0, "knockback": 25.0, "range": 26.0}},
@@ -446,17 +449,17 @@ const WEAPONS := {
 	"divine_judgment": {"name": "Divine Judgment", "quote": "Jumanji was just the beginning.", "icon": "holy_cross",
 		"evolution": true, "tint": Color(1.0, 0.95, 0.6), "behavior": "smite", "sheet": "holy_cross",
 		"base": {"cooldown": 3.0, "damage": 50.0}},
-	"sugar_rush": {"name": "Sugar Rush", "quote": "TRICK AND TREAT AND TRICK", "icon": "candy_corn",
-		"evolution": true, "tint": Color(1.0, 0.8, 1.0), "behavior": "shooter", "sheet": "candy_corn", "aim": "spin", "shot_scale": 0.5,
+	"sugar_rush": {"name": "Sugar Rush", "quote": "TRICK AND TREAT AND TRICK", "icon": "candy_shotgun_skill",
+		"evolution": true, "tint": Color(1.0, 0.8, 1.0), "behavior": "shooter", "sheet": "candy_shot", "aim": "spin",
 		"base": {"cooldown": 0.25, "damage": 16.0, "speed": 260.0, "amount": 3, "pierce": 3, "range": 200.0}},
 	"jacks_inferno": {"name": "Jack's Inferno", "quote": "Gourd almighty.", "icon": "pumpkin",
 		"evolution": true, "tint": Color(1.0, 0.5, 0.2), "behavior": "flask", "sheet": "pumpkin", "explode": 50.0,
 		"base": {"cooldown": 1.2, "damage": 70.0, "amount": 4, "range": 140.0, "area": 1.4}},
-	"jackpot": {"name": "Jackpot", "quote": "The house always wins.", "icon": "silver",
-		"evolution": true, "tint": Color(1.0, 0.85, 0.3), "behavior": "bounce", "sheet": "silver", "drops_silver": 0.05,
+	"jackpot": {"name": "Jackpot", "quote": "The house always wins.", "icon": "silver_coin_skill",
+		"evolution": true, "tint": Color(1.0, 0.85, 0.3), "behavior": "bounce", "sheet": "coin_spin", "upright": true, "drops_silver": 0.05,
 		"base": {"cooldown": 2.0, "damage": 30.0, "speed": 230.0, "duration": 5.0, "pierce": -1, "amount": 6, "area": 1.4}},
-	"skull_storm": {"name": "Skull Storm", "quote": "Alas, poor everybody.", "icon": "skull",
-		"evolution": true, "tint": Color(1.0, 0.5, 0.5), "behavior": "seeker", "sheet": "skull_icon",
+	"skull_storm": {"name": "Skull Storm", "quote": "Alas, poor everybody.", "icon": "skull_toss_skill",
+		"evolution": true, "tint": Color(1.0, 0.5, 0.5), "behavior": "seeker", "sheet": "flame_skull",
 		"base": {"cooldown": 0.8, "damage": 40.0, "speed": 180.0, "duration": 4.0, "pierce": 4, "amount": 6, "area": 1.3}},
 	"necromancers_grip": {"name": "Necromancer's Grip", "quote": "Everybody needs a hand.", "icon": "hand",
 		"evolution": true, "tint": Color(0.6, 1.0, 0.7), "behavior": "strike", "sheet": "hand", "target": "random", "strike_radius": 26.0, "sheet_scale": 0.5,
@@ -473,10 +476,10 @@ const WEAPONS := {
 	"haunted_boulevard": {"name": "Haunted Boulevard", "quote": "The whole street's lit.", "icon": "street_lamp",
 		"evolution": true, "tint": Color(1.0, 0.9, 0.5), "behavior": "turret", "sheet": "street_lamp", "zap": 0.3,
 		"base": {"cooldown": 3.0, "damage": 30.0, "duration": 12.0, "amount": 5, "range": 120.0}},
-	"van_helsing": {"name": "Van Helsing", "quote": "Professional help.", "icon": "wood_particle",
+	"van_helsing": {"name": "Van Helsing", "quote": "Professional help.", "icon": "wood_stake_skill",
 		"evolution": true, "tint": Color(1.0, 0.85, 0.6), "behavior": "shooter", "sheet": "wood_stake", "aim": "nearest", "rot_offset": PI / 2,
 		"base": {"cooldown": 0.35, "damage": 55.0, "speed": 380.0, "pierce": -1, "amount": 2, "range": 360.0, "knockback": 90.0}},
-	"carpet_bombing": {"name": "Carpet Bombing", "quote": "INCOMING!!!", "icon": "crosshair_new",
+	"carpet_bombing": {"name": "Carpet Bombing", "quote": "INCOMING!!!", "icon": "airstrike_skill",
 		"evolution": true, "tint": Color(1.0, 0.6, 0.4), "behavior": "strike", "sheet": "fireball_explosion", "target": "random", "warn": 0.5,
 		"strike_radius": 40.0, "sheet_scale": 3.0, "centered": true,
 		"base": {"cooldown": 1.5, "damage": 90.0, "amount": 5, "knockback": 80.0}},
@@ -485,7 +488,7 @@ const WEAPONS := {
 		"base": {"cooldown": 0.2, "damage": 28.0, "speed": 110.0, "duration": 999.0, "pierce": -1, "amount": 8, "area": 1.3}},
 
 	# ================================================================ Unions
-	"plasma_storm": {"name": "Plasma Storm", "quote": "FLAMIN HOT and shocking.", "icon": "fireball_icon",
+	"plasma_storm": {"name": "Plasma Storm", "quote": "FLAMIN HOT and shocking.", "icon": "plasma_storm_skill",
 		"evolution": true, "union": true, "tint": Color(1.0, 0.6, 1.0), "behavior": "chain", "color": Color(1.0, 0.6, 0.9), "explode": 30.0,
 		"base": {"cooldown": 0.9, "damage": 50.0, "amount": 8, "range": 180.0}},
 	"ricochet_royale": {"name": "Ricochet Royale", "quote": "OY MATE, heads or tails?", "icon": "boomerang_skill",
@@ -494,7 +497,7 @@ const WEAPONS := {
 	"night_parade": {"name": "Night Parade", "quote": "JUSTICE, WILLY O WISPY", "icon": "bat_skill",
 		"evolution": true, "union": true, "tint": Color(0.7, 0.9, 1.0), "behavior": "summon", "sheet": "bat", "bite": 0.25, "extra_wisps": 4,
 		"base": {"cooldown": 2.5, "damage": 26.0, "speed": 220.0, "duration": 8.0, "amount": 12, "pierce": 8}},
-	"sacred_heart": {"name": "Sacred Heart", "quote": "I LOVED HER. JUMANJI.", "icon": "heartbeat",
-		"evolution": true, "union": true, "tint": Color(1.0, 0.9, 0.7), "behavior": "nova", "color": Color(1.0, 0.9, 0.5), "heal": 6.0, "smite": true, "sheet": "holy_cross",
+	"sacred_heart": {"name": "Sacred Heart", "quote": "I LOVED HER. JUMANJI.", "icon": "sacred_heart_skill",
+		"evolution": true, "union": true, "tint": Color(1.0, 0.9, 0.7), "behavior": "nova", "color": Color(1.0, 0.9, 0.5), "heal": 6.0, "smite": true, "sheet": "sacred_heart",
 		"base": {"cooldown": 2.0, "damage": 60.0, "range": 160.0, "knockback": 80.0, "pierce": -1}},
 }
