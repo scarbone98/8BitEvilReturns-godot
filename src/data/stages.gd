@@ -21,7 +21,8 @@ extends RefCounted
 #   graves (graves burst into zombies), fountains (blood fountains heal
 #   monsters), pumpkin_burst (pumpkins explode after dying), blizzard (snow
 #   fog), ooze (pipes pour slowing puddles), darkness (only lit areas show).
-# Modifiers: hp_per_minute (how fast monsters toughen), speed_mul (monster
+# Modifiers: hp_per_minute (how fast monsters toughen: kept low, the later
+# waves' tougher kinds do most of the work), speed_mul (monster
 # speed), silver_bonus (extra silver at the end). `locked` stages need the feat
 # that lists them in progression.gd.
 # The 20 minutes every map follows, like VS: one wave a minute, and when the
@@ -31,6 +32,10 @@ extends RefCounted
 # `rate`: more per second on top. `swarm`: [count, seconds]: one-hit fodder
 # (cast.swarm) pouring in from one side; `sides` 2 = from both.
 # Calm and hard minutes alternate; from 15:00 it's everything, and bigger swarms.
+# How often each role is picked within a wave: the bulk is ordinary monsters,
+# the big ones are sprinkled in.
+const ROLE_WEIGHTS := {"grunt": 4.0, "fodder": 4.0, "mid": 3.0, "flier": 3.0, "fast": 2.0, "tank": 1.0, "heavy": 1.0, "giant": 0.5}
+
 const PACING := [
 	{"roles": ["grunt"], "min": 10, "rate": 0.8},                          # 0
 	{"roles": ["grunt", "fodder"], "min": 16, "rate": 1.2},                # 1
@@ -39,14 +44,14 @@ const PACING := [
 	{"roles": ["mid", "tank"], "min": 18, "rate": 1.4},                    # 4
 	{"roles": ["flier"], "min": 20, "rate": 1.2, "swarm": [80, 20]},       # 5
 	{"roles": ["grunt", "mid", "fodder"], "min": 40, "rate": 3.0},         # 6 hard
-	{"roles": ["fast"], "min": 18, "rate": 1.5},                           # 7
+	{"roles": ["fast", "grunt"], "min": 22, "rate": 1.5},                  # 7
 	{"roles": ["grunt", "fodder"], "min": 30, "rate": 2.0, "swarm": [100, 20]},  # 8
 	{"roles": ["fast", "flier", "tank"], "min": 45, "rate": 3.5},          # 9 hard
 	{"roles": ["heavy", "grunt"], "min": 30, "rate": 2.2},                 # 10
 	{"roles": ["fodder"], "min": 35, "rate": 2.5, "swarm": [150, 25]},     # 11
 	{"roles": ["fast", "flier"], "min": 55, "rate": 4.0},                  # 12 hard
 	{"roles": ["mid", "tank", "grunt"], "min": 60, "rate": 4.0},           # 13
-	{"roles": ["giant", "heavy"], "min": 35, "rate": 2.0, "swarm": [150, 20]},  # 14
+	{"roles": ["giant", "heavy", "grunt"], "min": 35, "rate": 2.0, "swarm": [150, 20]},  # 14
 	{"roles": ["all"], "min": 70, "rate": 5.0},                            # 15
 	{"roles": ["all"], "min": 80, "rate": 5.5, "swarm": [200, 25]},        # 16
 	{"roles": ["all"], "min": 95, "rate": 6.5},                            # 17
@@ -56,7 +61,7 @@ const PACING := [
 
 const STAGES := {
 	"graveyard": {
-		"name": "The Graveyard", "about": "Where it all started.", "ground": "gamebg", "hp_per_minute": 0.35, "max_alive": 600,
+		"name": "The Graveyard", "about": "Where it all started.", "ground": "gamebg", "hp_per_minute": 0.17, "max_alive": 600,
 		"obstacles": ["grave_1_small", "grave_2", "tree", "tree_2", "tree_3", "tree_4", "tree_5", "tree_6", "street_lamp", "mausoleum", "prop_angel", "prop_open_grave"],
 		"twist": {"type": "graves", "name": "Restless Graves", "desc": "Graves near you burst open."},
 		"layouts": [
@@ -88,7 +93,7 @@ const STAGES := {
 	},
 	"crimson_crypt": {
 		"name": "Crimson Crypt", "about": "The graveyard under a blood moon. Harder from the first minute.",
-		"ground": "gamebg", "tint": Color(1.0, 0.55, 0.55), "hp_per_minute": 0.5, "max_alive": 600, "locked": true,
+		"ground": "gamebg", "tint": Color(1.0, 0.55, 0.55), "hp_per_minute": 0.25, "max_alive": 600, "locked": true,
 		"silver_bonus": 0.5,
 		"props_per_chunk": [1, 4],
 		"obstacles": ["grave_1_small", "grave_2", "tree_5", "tree_6", "mausoleum", "prop_blood_fountain", "prop_gibbet", "prop_obelisk", "prop_angel", "prop_open_grave"],
@@ -123,7 +128,7 @@ const STAGES := {
 	},
 	"pumpkin_patch": {
 		"name": "Pumpkin Patch", "about": "Rows of grinning gourds, and something in the corn.",
-		"ground": "ground_pumpkin", "hp_per_minute": 0.4, "max_alive": 600, "locked": true, "silver_bonus": 0.2,
+		"ground": "ground_pumpkin", "hp_per_minute": 0.2, "max_alive": 600, "locked": true, "silver_bonus": 0.2,
 		"props_per_chunk": [1, 4],
 		"obstacles": ["tree_3", "tree_owl", "candybasket", "street_lamp", "prop_hay_bale", "prop_pumpkin_pile", "prop_corn", "prop_fence", "prop_scarecrow"],
 		"twist": {"type": "pumpkin_burst", "name": "Harvest Moon", "desc": "Pumpkins explode when they die. Step away!"},
@@ -155,7 +160,7 @@ const STAGES := {
 	},
 	"snowbound": {
 		"name": "Snowbound Cemetery", "about": "Fresh snow, fast feet. Everything out here is in a hurry.",
-		"ground": "ground_snow", "hp_per_minute": 0.4, "max_alive": 600, "locked": true, "silver_bonus": 0.3,
+		"ground": "ground_snow", "hp_per_minute": 0.2, "max_alive": 600, "locked": true, "silver_bonus": 0.3,
 		"speed_mul": 1.15,
 		"props_per_chunk": [1, 4],
 		"obstacles": ["tree_5", "tree_6", "grave_1_small", "mausoleum", "prop_snow_pine", "prop_snowman", "prop_ice_grave", "prop_snow_angel"],
@@ -187,7 +192,7 @@ const STAGES := {
 	},
 	"sewers": {
 		"name": "The Sewers", "about": "Wide open tunnels. Nowhere to hide from what crawls up the drains.",
-		"ground": "ground_sewer", "hp_per_minute": 0.45, "max_alive": 600, "locked": true, "silver_bonus": 0.4,
+		"ground": "ground_sewer", "hp_per_minute": 0.22, "max_alive": 600, "locked": true, "silver_bonus": 0.4,
 		"props_per_chunk": [1, 4],
 		"obstacles": ["street_lamp", "prop_sewer_pipe", "prop_barrels", "prop_brick_pillar"],
 		"decor": ["sewer", "skull", "blood", "prop_bones"],
@@ -216,7 +221,7 @@ const STAGES := {
 	},
 	"crypt_depths": {
 		"name": "Crypt Depths", "about": "Deep under the graveyard, where the bosses sleep. Not for long.",
-		"ground": "ground_crypt", "hp_per_minute": 0.6, "max_alive": 600, "locked": true, "silver_bonus": 0.6,
+		"ground": "ground_crypt", "hp_per_minute": 0.3, "max_alive": 600, "locked": true, "silver_bonus": 0.6,
 		"props_per_chunk": [1, 4],
 		"obstacles": ["mausoleum", "grave_1_small", "prop_sarcophagus", "prop_broken_pillar", "prop_candelabra", "prop_open_grave"],
 		"decor": ["skull", "blood", "prop_bones"],

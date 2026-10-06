@@ -69,8 +69,12 @@ var _reaper_clock := 0.0
 var _reapers_sent := 0
 var twist := ""            # this map's Nightmare twist (stages.gd), "" when not Nightmare
 var _twist_clock := 0.0
+const BOSS_HP_PER_LEVEL := 0.05   # +5% boss health per team level
+const CONTACT_PER_MINUTE := 0.03  # +3% contact damage per minute
 const SWARM_HP := 0.25       # of a normal one's health: one hit drops them (and they bite half as hard)
 var _wave_acc := 0.0
+var _topup_acc := 0.0
+const TOPUP_RATE := 10.0     # monsters a second while under a wave's minimum
 var _swarm_minute := -1
 var _swarm_dir := 0.0
 var _swarm_acc := 0.0
@@ -500,7 +504,7 @@ func _spawn(delta: float) -> void:
 			"boss":
 				# Nightmare bosses come in pairs.
 				for k in (1 if nm == 1.0 else 2):
-					enemies.spawn(ev.enemy, _offscreen_point(Db.ENEMIES[ev.enemy].radius * 2.0), hp_mul, true, speed_mul)
+					enemies.spawn(ev.enemy, _offscreen_point(Db.ENEMIES[ev.enemy].radius * 2.0), hp_mul * boss_level_scale(), true, speed_mul)
 
 ## This minute's wave from Db.PACING: keep at least `min` monsters out, add
 ## `rate` a second on top, and run the minute's swarm. `scale` is the map's
@@ -509,14 +513,29 @@ func _wave_tick(delta: float, hp_mul: float, speed_mul: float, elite_chance: flo
 	var wi := mini(int(time / 60.0), Db.PACING.size() - 1)
 	var wave: Dictionary = Db.PACING[wi]
 	var cast: Dictionary = stage.cast
-	var kinds: Array = cast.values() if wave.roles.has("all") else wave.roles.map(func(r): return cast[r])
+	var roles: Array = Db.ROLE_WEIGHTS.keys() if wave.roles.has("all") else wave.roles
+	var total := 0.0
+	for r in roles:
+		total += Db.ROLE_WEIGHTS[r]
 	var spawn_one := func():
-		var k: String = kinds.pick_random()
+		var pick := randf() * total
+		var k: String = cast[roles[-1]]
+		for r in roles:
+			pick -= Db.ROLE_WEIGHTS[r]
+			if pick <= 0.0:
+				k = cast[r]
+				break
 		enemies.spawn(k, _offscreen_point(Db.ENEMIES[k].radius), hp_mul, false, speed_mul, randf() < elite_chance)
-	# Under the minimum: top up at once, a few a frame so it never hitches.
+	# Under the minimum: top up fast, but as a stream (TOPUP_RATE a second)
+	# so a new wave never lands as an instant ring around you.
 	var short := mini(int(wave.min * scale) - enemies.count(), cap - enemies.count())
-	for k in mini(short, 6):
-		spawn_one.call()
+	if short > 0:
+		_topup_acc = minf(_topup_acc + TOPUP_RATE * delta, float(short))
+		while _topup_acc >= 1.0:
+			_topup_acc -= 1.0
+			spawn_one.call()
+	else:
+		_topup_acc = 0.0
 	_wave_acc += wave.rate * scale * delta
 	while _wave_acc >= 1.0:
 		_wave_acc -= 1.0
@@ -540,6 +559,16 @@ func _wave_tick(delta: float, hp_mul: float, speed_mul: float, elite_chance: flo
 				var side := _swarm_dir + (PI if _swarm_sides == 2 and randi() % 2 == 0 else 0.0)
 				var at := _offscreen_point(Db.ENEMIES[fodder].radius, side + randf_range(-0.6, 0.6))
 				enemies.spawn(fodder, at, hp_mul * SWARM_HP, false, speed_mul, false, 0.5)
+
+## Bosses grow with the team's level (like VS), so a strong build still has
+## to work for them.
+func boss_level_scale() -> float:
+	return 1.0 + BOSS_HP_PER_LEVEL * (level - 1)
+
+## Monsters hit a little harder as the night goes on (health grows slowly,
+## so this keeps late hits worth dodging). Not the Reaper: he's tuned alone.
+func contact_scale() -> float:
+	return 1.0 + CONTACT_PER_MINUTE * time / 60.0
 
 ## Just off a random hero's screen, never inside a grave, tree or building.
 ## `angle` picks the side (NAN: anywhere around).

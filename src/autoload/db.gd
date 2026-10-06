@@ -24,6 +24,7 @@ const ENEMIES: Dictionary = _Enemies.ENEMIES
 const CANDY: Array = _Enemies.CANDY
 const STAGES: Dictionary = _Stages.STAGES
 const PACING: Array = _Stages.PACING
+const ROLE_WEIGHTS: Dictionary = _Stages.ROLE_WEIGHTS
 const QUESTS: Dictionary = _Quests.QUESTS
 const QUEST_CROWN_SILVER: int = _Quests.CROWN_SILVER
 const FEATS: Dictionary = _Progression.FEATS
