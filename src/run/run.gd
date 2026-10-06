@@ -69,12 +69,14 @@ var _reaper_clock := 0.0
 var _reapers_sent := 0
 var twist := ""            # this map's Nightmare twist (stages.gd), "" when not Nightmare
 var _twist_clock := 0.0
-const SWARM_SECONDS := 20.0  # how long a swarm minute's flood lasts
-const SWARM_RATE := 4.0      # fodder per second (before the time/curse/team ramp)
 const SWARM_HP := 0.25       # of a normal one's health: one hit drops them (and they bite half as hard)
+var _wave_acc := 0.0
 var _swarm_minute := -1
 var _swarm_dir := 0.0
 var _swarm_acc := 0.0
+var _swarm_left := 0.0       # fodder still to come in the current swarm
+var _swarm_rate := 0.0       # per second
+var _swarm_sides := 1
 var _hp_mul_now := 1.0     # the spawns' current toughness, for monsters twists add
 var _twist_count := 0      # dev reports: heals, puddles or blasts so far
 # Map quests (see quests.gd): what the whole team did this run.
@@ -472,29 +474,13 @@ func _spawn(delta: float) -> void:
 	var speed_mul: float = stage.get("speed_mul", 1.0) * (1.0 if nm == 1.0 else NIGHTMARE.speed)
 	var elite_chance: float = 0.0 if nm == 1.0 else NIGHTMARE.elite
 	_hp_mul_now = hp_mul
-	# Pacing, VS style: a normal minute, a hard one, then a swarm minute that
-	# eases off the regular spawns and floods in fodder from one side.
-	# The first five minutes stay gentle: no hard minute or swarm until 4:00
-	# and 5:00.
-	var beat := int(minute) % 3 if not attract and minute >= 4.0 else 0
-	var pace: float = [0.85, 1.2, 0.35][beat]
-	if beat == 2 and int(minute) != _swarm_minute:
-		_swarm_minute = int(minute)
-		_swarm_dir = randf() * TAU
-		_tell_everyone("A SWARM IS COMING!", UI.GOLD)
-	if beat == 2 and fmod(minute, 1.0) < SWARM_SECONDS / 60.0:
-		var fodder: String = stage.get("swarm", "skull")
-		_swarm_acc += SWARM_RATE * ramp * delta
-		while _swarm_acc >= 1.0:
-			_swarm_acc -= 1.0
-			if enemies.count() < cap:
-				var at := _offscreen_point(Db.ENEMIES[fodder].radius, _swarm_dir + randf_range(-0.6, 0.6))
-				enemies.spawn(fodder, at, hp_mul * SWARM_HP, false, speed_mul, false, 0.5)
+	_wave_tick(delta, hp_mul, speed_mul, elite_chance, cap,
+		float(stage.get("pace", 1.0)) * (1.0 + curse) * team * (1.0 if nm == 1.0 else NIGHTMARE.spawn) * (3.0 if attract else 1.0))
 	for i in stage.spawns.size():
 		var sp: Dictionary = stage.spawns[i]
 		if minute < sp.from or minute >= sp.to:
 			continue
-		_spawn_acc[i] += sp.rate * ramp * pace * delta
+		_spawn_acc[i] += sp.rate * ramp * delta
 		while _spawn_acc[i] >= 1.0:
 			_spawn_acc[i] -= 1.0
 			if enemies.count() < cap:
@@ -515,6 +501,45 @@ func _spawn(delta: float) -> void:
 				# Nightmare bosses come in pairs.
 				for k in (1 if nm == 1.0 else 2):
 					enemies.spawn(ev.enemy, _offscreen_point(Db.ENEMIES[ev.enemy].radius * 2.0), hp_mul, true, speed_mul)
+
+## This minute's wave from Db.PACING: keep at least `min` monsters out, add
+## `rate` a second on top, and run the minute's swarm. `scale` is the map's
+## pace times curse, team size and Nightmare.
+func _wave_tick(delta: float, hp_mul: float, speed_mul: float, elite_chance: float, cap: int, scale: float) -> void:
+	var wi := mini(int(time / 60.0), Db.PACING.size() - 1)
+	var wave: Dictionary = Db.PACING[wi]
+	var cast: Dictionary = stage.cast
+	var kinds: Array = cast.values() if wave.roles.has("all") else wave.roles.map(func(r): return cast[r])
+	var spawn_one := func():
+		var k: String = kinds.pick_random()
+		enemies.spawn(k, _offscreen_point(Db.ENEMIES[k].radius), hp_mul, false, speed_mul, randf() < elite_chance)
+	# Under the minimum: top up at once, a few a frame so it never hitches.
+	var short := mini(int(wave.min * scale) - enemies.count(), cap - enemies.count())
+	for k in mini(short, 6):
+		spawn_one.call()
+	_wave_acc += wave.rate * scale * delta
+	while _wave_acc >= 1.0:
+		_wave_acc -= 1.0
+		if enemies.count() < cap:
+			spawn_one.call()
+	# The minute's swarm: one-hit fodder pouring in from one side (or two).
+	if wave.has("swarm") and wi != _swarm_minute and not attract:
+		_swarm_minute = wi
+		_swarm_left = wave.swarm[0] * scale
+		_swarm_rate = wave.swarm[0] * scale / float(wave.swarm[1])
+		_swarm_sides = int(wave.get("sides", 1))
+		_swarm_dir = randf() * TAU
+		_tell_everyone("A SWARM IS COMING!" if _swarm_sides == 1 else "THEY'RE COMING FROM BOTH SIDES!", UI.GOLD)
+	if _swarm_left > 0.0:
+		_swarm_acc += _swarm_rate * delta
+		while _swarm_acc >= 1.0 and _swarm_left > 0.0:
+			_swarm_acc -= 1.0
+			_swarm_left -= 1.0
+			if enemies.count() < cap:
+				var fodder: String = cast.swarm
+				var side := _swarm_dir + (PI if _swarm_sides == 2 and randi() % 2 == 0 else 0.0)
+				var at := _offscreen_point(Db.ENEMIES[fodder].radius, side + randf_range(-0.6, 0.6))
+				enemies.spawn(fodder, at, hp_mul * SWARM_HP, false, speed_mul, false, 0.5)
 
 ## Just off a random hero's screen, never inside a grave, tree or building.
 ## `angle` picks the side (NAN: anywhere around).
@@ -846,6 +871,12 @@ func show_chest_note(gained: Array) -> void:
 	for g in gained:
 		hud.toast("%s %s" % [Db.upgrade_def(g[0]).get("name", g[0]), g[1]], UI.GOLD if str(g[1]).ends_with("!") else UI.PALE)
 
+## Lets a label wrap inside the panel instead of running off a phone screen.
+func _wrap(l: Label) -> Label:
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return l
+
 func _unlock_row(id: String) -> Control:
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -864,7 +895,8 @@ func _unlock_row(id: String) -> Control:
 	var text := "UNLOCKED " + name
 	if Db.CHARACTERS.has(id) and int(Db.CHARACTERS[id].get("cost", 0)) > 0 and not Meta.is_unlocked(id):
 		text = "NEW HERO FOR SALE: %s (%d silver)" % [name, int(Db.CHARACTERS[id].cost)]
-	row.add_child(UI.label(text, 8, UI.PALE))
+	var l := _wrap(UI.label(text, 8, UI.PALE, HORIZONTAL_ALIGNMENT_LEFT if row.get_child_count() > 0 else HORIZONTAL_ALIGNMENT_CENTER))
+	row.add_child(l)
 	return row
 
 func _show_pause() -> void:
@@ -1258,7 +1290,13 @@ func _game_over() -> void:
 func show_results(r: Dictionary) -> void:
 	ended = true
 	var result := {"best": false, "feats": [], "unlocks": [], "quests": [], "crowned": false}
-	if not dev:
+	if dev and Bridge.flags().has("fakeresults"):
+		# Dev: the busiest results screen a run can give, to check it fits.
+		r = r.duplicate(); r.merge({"kills": 2501, "candy": 3000, "level": 32, "silver": 1234, "cleared": true, "reapers": 2}, true)
+		result = {"best": true, "feats": Db.FEATS.keys().slice(0, 6), "quests": Db.quests_for(stage_id).map(func(q): return q.id),
+			"unlocks": ["cursed_sword", "lightning", "scope", "snail_king", "crimson_crypt", "bog_king"], "crowned": true,
+			"first_clear": true, "first_reaper": true}
+	elif not dev:
 		result = Meta.finish_run(r)
 		if autoplay:
 			print("[result] ", result, " silver=", Meta.silver)
@@ -1267,13 +1305,22 @@ func show_results(r: Dictionary) -> void:
 	if r.get("cleared", false):
 		title = "THE REAPER WINS" if int(r.get("reapers", 0)) == 0 else "YOU FELL... A LEGEND"
 	var box := _panel(title, UI.RED)
+	if title.length() > 15:  # 16px letters: longer titles run off a phone
+		(box.get_child(0) as Label).add_theme_font_size_override("font_size", 12)
 	box.add_child(UI.label(UI.time_text(r.seconds), 24, UI.PALE))
 	if result.best:
 		box.add_child(UI.label("NEW BEST!", 8, UI.GOLD))
-	box.add_child(UI.label("Kills %d   Candy %d   Lv %d" % [r.kills, r.candy, r.level], 8, UI.DIM))
+	box.add_child(_wrap(UI.label("Kills %d  Candy %d  Lv %d" % [r.kills, r.candy, r.level], 8, UI.DIM)))
 	box.add_child(UI.label("+%d silver" % r.silver, 10, UI.GOLD))
+	# Everything earned goes in a list that scrolls if it's taller than the
+	# screen, so PLAY AGAIN never gets pushed off.
+	var rewards := VBoxContainer.new()
+	rewards.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rewards.add_theme_constant_override("separation", 4)
+	var outer := box
+	box = rewards
 	for f in result.feats:
-		box.add_child(UI.label("FEAT: " + Db.FEATS[f].name, 8, UI.GOLD))
+		box.add_child(_wrap(UI.label("FEAT: " + Db.FEATS[f].name, 8, UI.GOLD)))
 	for id in result.unlocks:
 		box.add_child(_unlock_row(id))
 	for id in result.get("quests", []):
@@ -1290,6 +1337,18 @@ func show_results(r: Dictionary) -> void:
 			+ ("  +%d silver" % Meta.FIRST_REAPER_SILVER if result.get("first_reaper", false) else ""), 10, UI.GOLD))
 	if result.get("first_clear", false) and not r.get("nightmare", false):
 		box.add_child(UI.label("NIGHTMARE unlocked on this map", 8, UI.RED))
+	for l in rewards.get_children():
+		if l is Label:
+			_wrap(l)
+	box = outer
+	if rewards.get_child_count() > 0:
+		var scroll := ScrollContainer.new()
+		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		scroll.add_child(rewards)
+		# About 16px a line; at most what's left after the fixed rows.
+		var room := get_viewport_rect().size.y - 230.0
+		scroll.custom_minimum_size.y = clampf(rewards.get_child_count() * 16.0, 16.0, maxf(room, 48.0))
+		box.add_child(scroll)
 	var again := UI.button("PLAY AGAIN", func():
 		get_tree().paused = false
 		Net.leave()

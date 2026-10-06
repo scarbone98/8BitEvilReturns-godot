@@ -3,7 +3,11 @@ extends RefCounted
 # Each stage: a floor (`ground`, recoloured from the original with
 # tools/recolor.py), the props scattered on it (`obstacles`) and flat `decor`,
 # and its monsters:
-#   spawns: while from <= minute < to, keep spawning `enemy` at `rate`/s.
+#   waves: minute by minute from PACING below (VS style): each minute names
+#           which `cast` roles spawn, and earlier roles stop. `pace` scales
+#           the whole map's counts and rates.
+#   spawns: while from <= minute < to, keep spawning `enemy` at `rate`/s
+#           (only the rooted shooters now, on top of the waves).
 #   events: one-shot at `at` minutes: "ring" circles the player, "boss" spawns
 #           a big version that drops a chest.
 # layouts: how each 160px chunk is filled, one picked per chunk by weight `w`
@@ -17,13 +21,39 @@ extends RefCounted
 #   graves (graves burst into zombies), fountains (blood fountains heal
 #   monsters), pumpkin_burst (pumpkins explode after dying), blizzard (snow
 #   fog), ooze (pipes pour slowing puddles), darkness (only lit areas show).
-# Pacing (Run._spawn): gentle until 4:00, then minutes go hard, swarm, normal,
-#   hard, swarm... (swarms at 5:00, 8:00, 11:00...).
-#   A swarm minute thins the regular spawns and floods in `swarm` (default
-#   "skull") from one side: lots of them, but they drop in one hit.
 # Modifiers: hp_per_minute (how fast monsters toughen), speed_mul (monster
 # speed), silver_bonus (extra silver at the end). `locked` stages need the feat
 # that lists them in progression.gd.
+# The 20 minutes every map follows, like VS: one wave a minute, and when the
+# minute turns, the last wave's monsters stop coming (the ones already out
+# stay). `roles` are filled from the map's cast ("all" = every role).
+# `min`: monsters kept on screen; drop below and more come at once.
+# `rate`: more per second on top. `swarm`: [count, seconds]: one-hit fodder
+# (cast.swarm) pouring in from one side; `sides` 2 = from both.
+# Calm and hard minutes alternate; from 15:00 it's everything, and bigger swarms.
+const PACING := [
+	{"roles": ["grunt"], "min": 10, "rate": 0.8},                          # 0
+	{"roles": ["grunt", "fodder"], "min": 16, "rate": 1.2},                # 1
+	{"roles": ["mid"], "min": 14, "rate": 1.0, "swarm": [40, 15]},         # 2
+	{"roles": ["grunt", "flier"], "min": 28, "rate": 2.2},                 # 3 hard
+	{"roles": ["mid", "tank"], "min": 18, "rate": 1.4},                    # 4
+	{"roles": ["flier"], "min": 20, "rate": 1.2, "swarm": [80, 20]},       # 5
+	{"roles": ["grunt", "mid", "fodder"], "min": 40, "rate": 3.0},         # 6 hard
+	{"roles": ["fast"], "min": 18, "rate": 1.5},                           # 7
+	{"roles": ["grunt", "fodder"], "min": 30, "rate": 2.0, "swarm": [100, 20]},  # 8
+	{"roles": ["fast", "flier", "tank"], "min": 45, "rate": 3.5},          # 9 hard
+	{"roles": ["heavy", "grunt"], "min": 30, "rate": 2.2},                 # 10
+	{"roles": ["fodder"], "min": 35, "rate": 2.5, "swarm": [150, 25]},     # 11
+	{"roles": ["fast", "flier"], "min": 55, "rate": 4.0},                  # 12 hard
+	{"roles": ["mid", "tank", "grunt"], "min": 60, "rate": 4.0},           # 13
+	{"roles": ["giant", "heavy"], "min": 35, "rate": 2.0, "swarm": [150, 20]},  # 14
+	{"roles": ["all"], "min": 70, "rate": 5.0},                            # 15
+	{"roles": ["all"], "min": 80, "rate": 5.5, "swarm": [200, 25]},        # 16
+	{"roles": ["all"], "min": 95, "rate": 6.5},                            # 17
+	{"roles": ["all"], "min": 110, "rate": 7.0, "swarm": [250, 25]},       # 18
+	{"roles": ["all"], "min": 130, "rate": 8.0, "swarm": [300, 30], "sides": 2},  # 19
+]
+
 const STAGES := {
 	"graveyard": {
 		"name": "The Graveyard", "about": "Where it all started.", "ground": "gamebg", "hp_per_minute": 0.35, "max_alive": 600,
@@ -39,18 +69,10 @@ const STAGES := {
 			{"t": "row", "w": 1, "kinds": ["prop_open_grave", "grave_2"], "n": 2, "gap": 46, "mix": true},
 			{"t": "row", "w": 0.7, "kinds": ["street_lamp"], "n": 2, "gap": 70},
 		],
+		"cast": {"grunt": "zombie", "fodder": "skull", "mid": "pumpkin", "flier": "ghost", "tank": "scarecrow", "fast": "werewolf", "heavy": "shadowbeast", "giant": "swampthing", "swarm": "skull"},
+		"pace": 1.0,
+		# Stationary shooters keep coming all run, on top of the waves.
 		"spawns": [
-			{"enemy": "zombie", "from": 0.0, "to": 3.0, "rate": 0.6},
-			{"enemy": "skull", "from": 0.75, "to": 5.0, "rate": 0.4},
-			{"enemy": "pumpkin", "from": 1.5, "to": 7.0, "rate": 0.5},
-			{"enemy": "zombie", "from": 3.0, "to": 30.0, "rate": 1.0},
-			{"enemy": "ghost", "from": 3.0, "to": 10.0, "rate": 0.6},
-			{"enemy": "scarecrow", "from": 5.0, "to": 12.0, "rate": 0.35},
-			{"enemy": "werewolf", "from": 7.0, "to": 30.0, "rate": 0.6},
-			{"enemy": "skull", "from": 8.0, "to": 30.0, "rate": 1.2},
-			{"enemy": "shadowbeast", "from": 10.0, "to": 30.0, "rate": 0.5},
-			{"enemy": "ghost", "from": 12.0, "to": 30.0, "rate": 1.0},
-			{"enemy": "swampthing", "from": 14.0, "to": 30.0, "rate": 0.3},
 			{"enemy": "eye_stalk", "from": 2.5, "to": 30.0, "rate": 0.15},
 		],
 		"events": [
@@ -82,15 +104,10 @@ const STAGES := {
 			{"t": "landmark", "w": 1, "center": ["prop_angel", "mausoleum"], "around": ["prop_obelisk"], "spots": [[-50, 10], [50, 10]]},
 			{"t": "row", "w": 0.6, "kinds": ["prop_open_grave"], "n": 2, "gap": 46},
 		],
+		"cast": {"grunt": "ghost", "fodder": "skull", "mid": "scarecrow", "flier": "ghost", "tank": "scarecrow", "fast": "werewolf", "heavy": "shadowbeast", "giant": "swampthing", "swarm": "skull"},
+		"pace": 1.3,
+		# Stationary shooters keep coming all run, on top of the waves.
 		"spawns": [
-			{"enemy": "skull", "from": 0.0, "to": 4.0, "rate": 1.0},
-			{"enemy": "ghost", "from": 0.0, "to": 6.0, "rate": 0.6},
-			{"enemy": "werewolf", "from": 1.0, "to": 30.0, "rate": 0.5},
-			{"enemy": "scarecrow", "from": 2.0, "to": 10.0, "rate": 0.5},
-			{"enemy": "shadowbeast", "from": 4.0, "to": 30.0, "rate": 0.6},
-			{"enemy": "skull", "from": 4.0, "to": 30.0, "rate": 1.8},
-			{"enemy": "swampthing", "from": 7.0, "to": 30.0, "rate": 0.5},
-			{"enemy": "ghost", "from": 8.0, "to": 30.0, "rate": 1.5},
 			{"enemy": "eye_stalk", "from": 1.0, "to": 30.0, "rate": 0.25},
 		],
 		"events": [
@@ -105,7 +122,7 @@ const STAGES := {
 		],
 	},
 	"pumpkin_patch": {
-		"name": "Pumpkin Patch", "swarm": "pumpkin", "about": "Rows of grinning gourds, and something in the corn.",
+		"name": "Pumpkin Patch", "about": "Rows of grinning gourds, and something in the corn.",
 		"ground": "ground_pumpkin", "hp_per_minute": 0.4, "max_alive": 600, "locked": true, "silver_bonus": 0.2,
 		"props_per_chunk": [1, 4],
 		"obstacles": ["tree_3", "tree_owl", "candybasket", "street_lamp", "prop_hay_bale", "prop_pumpkin_pile", "prop_corn", "prop_fence", "prop_scarecrow"],
@@ -120,14 +137,10 @@ const STAGES := {
 			{"t": "row", "w": 1, "kinds": ["prop_hay_bale"], "n": 2, "gap": 38},
 			{"t": "row", "w": 0.4, "kinds": ["candybasket", "street_lamp"], "n": 2, "gap": 46, "mix": true},
 		],
+		"cast": {"grunt": "pumpkin", "fodder": "skull", "mid": "zombie", "flier": "skull", "tank": "scarecrow", "fast": "werewolf", "heavy": "shadowbeast", "giant": "scarecrow", "swarm": "pumpkin"},
+		"pace": 1.1,
+		# Stationary shooters keep coming all run, on top of the waves.
 		"spawns": [
-			{"enemy": "pumpkin", "from": 0.0, "to": 6.0, "rate": 1.0},
-			{"enemy": "zombie", "from": 0.0, "to": 4.0, "rate": 0.4},
-			{"enemy": "skull", "from": 1.0, "to": 30.0, "rate": 0.6},
-			{"enemy": "scarecrow", "from": 2.0, "to": 30.0, "rate": 0.6},
-			{"enemy": "pumpkin", "from": 6.0, "to": 30.0, "rate": 2.0},
-			{"enemy": "werewolf", "from": 5.0, "to": 30.0, "rate": 0.8},
-			{"enemy": "shadowbeast", "from": 10.0, "to": 30.0, "rate": 0.6},
 			{"enemy": "gourd_spitter", "from": 1.5, "to": 30.0, "rate": 0.25},
 		],
 		"events": [
@@ -157,13 +170,10 @@ const STAGES := {
 			{"t": "row", "w": 0.6, "kinds": ["prop_snowman"], "n": [1, 2], "gap": 40},
 			{"t": "grove", "w": 1, "kinds": ["tree_5", "tree_6"], "n": [2, 3], "r": 34},
 		],
+		"cast": {"grunt": "zombie", "fodder": "skull", "mid": "ghost", "flier": "ghost", "tank": "shadowbeast", "fast": "werewolf", "heavy": "shadowbeast", "giant": "shadowbeast", "swarm": "skull"},
+		"pace": 1.1,
+		# Stationary shooters keep coming all run, on top of the waves.
 		"spawns": [
-			{"enemy": "ghost", "from": 0.0, "to": 30.0, "rate": 0.6},
-			{"enemy": "skull", "from": 0.0, "to": 30.0, "rate": 0.8},
-			{"enemy": "werewolf", "from": 1.5, "to": 30.0, "rate": 0.6},
-			{"enemy": "zombie", "from": 3.0, "to": 30.0, "rate": 0.8},
-			{"enemy": "shadowbeast", "from": 6.0, "to": 30.0, "rate": 0.5},
-			{"enemy": "ghost", "from": 9.0, "to": 30.0, "rate": 1.4},
 			{"enemy": "frost_totem", "from": 2.0, "to": 30.0, "rate": 0.22},
 		],
 		"events": [
@@ -176,7 +186,7 @@ const STAGES := {
 		],
 	},
 	"sewers": {
-		"name": "The Sewers", "swarm": "zombie", "about": "Wide open tunnels. Nowhere to hide from what crawls up the drains.",
+		"name": "The Sewers", "about": "Wide open tunnels. Nowhere to hide from what crawls up the drains.",
 		"ground": "ground_sewer", "hp_per_minute": 0.45, "max_alive": 600, "locked": true, "silver_bonus": 0.4,
 		"props_per_chunk": [1, 4],
 		"obstacles": ["street_lamp", "prop_sewer_pipe", "prop_barrels", "prop_brick_pillar"],
@@ -190,12 +200,10 @@ const STAGES := {
 			{"t": "row", "w": 1, "kinds": ["street_lamp"], "n": 2, "gap": 70},
 			{"t": "row", "w": 1, "kinds": ["prop_brick_pillar"], "n": [2, 3], "gap": 40},
 		],
+		"cast": {"grunt": "zombie", "fodder": "skull", "mid": "zombie", "flier": "ghost", "tank": "swampthing", "fast": "skull", "heavy": "swampthing", "giant": "swampthing", "swarm": "zombie"},
+		"pace": 1.15,
+		# Stationary shooters keep coming all run, on top of the waves.
 		"spawns": [
-			{"enemy": "zombie", "from": 0.0, "to": 30.0, "rate": 1.0},
-			{"enemy": "swampthing", "from": 1.0, "to": 30.0, "rate": 0.35},
-			{"enemy": "skull", "from": 2.0, "to": 30.0, "rate": 1.0},
-			{"enemy": "ghost", "from": 4.0, "to": 30.0, "rate": 0.8},
-			{"enemy": "swampthing", "from": 8.0, "to": 30.0, "rate": 0.6},
 			{"enemy": "sludge_toad", "from": 1.5, "to": 30.0, "rate": 0.25},
 		],
 		"events": [
@@ -207,7 +215,7 @@ const STAGES := {
 		],
 	},
 	"crypt_depths": {
-		"name": "Crypt Depths", "swarm": "ghost", "about": "Deep under the graveyard, where the bosses sleep. Not for long.",
+		"name": "Crypt Depths", "about": "Deep under the graveyard, where the bosses sleep. Not for long.",
 		"ground": "ground_crypt", "hp_per_minute": 0.6, "max_alive": 600, "locked": true, "silver_bonus": 0.6,
 		"props_per_chunk": [1, 4],
 		"obstacles": ["mausoleum", "grave_1_small", "prop_sarcophagus", "prop_broken_pillar", "prop_candelabra", "prop_open_grave"],
@@ -222,12 +230,10 @@ const STAGES := {
 			{"t": "row", "w": 0.7, "kinds": ["prop_open_grave"], "n": 2, "gap": 46},
 			{"t": "grid", "w": 0.7, "kinds": ["prop_sarcophagus"], "cols": 2, "rows": 2, "gap": [56, 40], "missing": 0.2},
 		],
+		"cast": {"grunt": "skull", "fodder": "skull", "mid": "ghost", "flier": "ghost", "tank": "shadowbeast", "fast": "werewolf", "heavy": "shadowbeast", "giant": "swampthing", "swarm": "ghost"},
+		"pace": 1.25,
+		# Stationary shooters keep coming all run, on top of the waves.
 		"spawns": [
-			{"enemy": "skull", "from": 0.0, "to": 30.0, "rate": 1.2},
-			{"enemy": "shadowbeast", "from": 0.5, "to": 30.0, "rate": 0.5},
-			{"enemy": "ghost", "from": 2.0, "to": 30.0, "rate": 0.8},
-			{"enemy": "werewolf", "from": 4.0, "to": 30.0, "rate": 0.7},
-			{"enemy": "swampthing", "from": 6.0, "to": 30.0, "rate": 0.5},
 			{"enemy": "eye_stalk", "from": 1.0, "to": 30.0, "rate": 0.3},
 		],
 		"events": [
