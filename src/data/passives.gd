@@ -1,7 +1,8 @@
 extends RefCounted
 ## Passive items. Each level adds `per_level` to the hero's stats (see
 ## Player.STAT_DEFAULTS). The first seven are (orig) names and descriptions
-## from the Unity build; their icons are guesses.
+## from the Unity build; their icons are guesses. Those seven are what a new
+## player starts with; the rest are `locked` until a feat (progression.gd).
 
 const MAX_WEAPONS := 6
 const MAX_PASSIVES := 6
@@ -22,15 +23,15 @@ const PASSIVES := {
 	"vacuusuck": {"name": "VacuuSuck", "desc": "Pull candy from further away", "quote": "Hear me out...", "icon": "vacusuck",
 		"per_level": {"magnet": 0.35}, "max_level": 5},
 	# New
-	"pocket_watch": {"name": "Pocket Watch", "desc": "Weapon effects last 10% longer", "icon": "clock",
+	"pocket_watch": {"name": "Pocket Watch", "desc": "Weapon effects last 10% longer", "icon": "clock", "locked": true,
 		"per_level": {"duration": 0.10}, "max_level": 5},
-	"lucky_trophy": {"name": "Lucky Trophy", "desc": "+10% luck: better chests, more level-up choices", "icon": "trophy_small",
+	"lucky_trophy": {"name": "Lucky Trophy", "desc": "+10% luck: better chests, more level-up choices", "icon": "trophy_small", "locked": true,
 		"per_level": {"luck": 0.10}, "max_level": 5},
-	"candy_basket": {"name": "Candy Basket", "desc": "+20% silver from everything", "icon": "candybasket",
+	"candy_basket": {"name": "Candy Basket", "desc": "+20% silver from everything", "icon": "candybasket", "locked": true,
 		"per_level": {"greed": 0.20}, "max_level": 5},
-	"scope": {"name": "Scope", "desc": "Projectiles fly 10% faster", "icon": "crosshair_new",
+	"scope": {"name": "Scope", "desc": "Projectiles fly 10% faster", "icon": "crosshair_new", "locked": true,
 		"per_level": {"proj_speed": 0.10}, "max_level": 5},
-	"grave_dirt": {"name": "Grave Dirt", "desc": "Weapons hit 10% wider", "icon": "sewer",
+	"grave_dirt": {"name": "Grave Dirt", "desc": "Weapons hit 10% wider", "icon": "sewer", "locked": true,
 		"per_level": {"area": 0.10}, "max_level": 5},
 	"skull_ring": {"name": "Skull Ring", "desc": "+10% curse: tougher, faster, more monsters. More candy.", "icon": "skull", "locked": true,
 		"per_level": {"curse": 0.10, "growth": 0.05}, "max_level": 5},

@@ -104,7 +104,7 @@ const WEAPONS := {
 		"union": {"with": "silver_coin", "into": "ricochet_royale"},
 	},
 	"lightning": {
-		"name": "Lightning", "quote": "A shocking discovery", "icon": "lightning_skill",
+		"name": "Lightning", "quote": "A shocking discovery", "icon": "lightning_skill", "locked": true,
 		"behavior": "strike", "sheet": "lightning", "strike_radius": 22.0,
 		"base": {"cooldown": 2.5, "damage": 15.0, "amount": 2},  # (orig) 2.5 / 15
 		"levels": [
@@ -119,7 +119,7 @@ const WEAPONS := {
 		"evolve": {"with": "experience_up", "into": "thunderstorm"},
 	},
 	"cursed_sword": {
-		"name": "Cursed Sword", "quote": "BOOOOO!", "icon": "cursed_sword_skill",
+		"name": "Cursed Sword", "quote": "BOOOOO!", "icon": "cursed_sword_skill", "locked": true,
 		"behavior": "bounce", "sheet": "cursed_sword", "retarget": true, "rot_offset": PI / 4,
 		"base": {"cooldown": 3.0, "damage": 10.0, "speed": 200.0, "duration": 2.5, "pierce": -1, "amount": 1},  # (orig) 2.5 / 10
 		"levels": [
@@ -134,9 +134,9 @@ const WEAPONS := {
 		"evolve": {"with": "max_health", "into": "soul_eater"},
 	},
 	"acid": {
-		"name": "Acid", "quote": "This tastes funny...", "icon": "potion_skill",
+		"name": "Acid", "quote": "This tastes funny...", "icon": "potion_skill", "locked": true,
 		"behavior": "flask", "sheet": "acid_potion", "pool_sheet": "acid_pool", "tick": 0.35,
-		"base": {"cooldown": 4.0, "damage": 3.0, "duration": 2.5, "area": 1.0, "range": 90.0},  # (orig) 4 / 3
+		"base": {"cooldown": 2.5, "damage": 3.0, "duration": 2.5, "area": 1.0, "range": 90.0},  # (orig) 4 / 3; 2.5 so it can hold alone
 		"levels": [
 			{"desc": "Throw 1 more flask", "amount": 1},  # (orig) "Throw 1 more flask"
 			{"desc": "+2 damage", "damage": 2.0},
@@ -149,7 +149,7 @@ const WEAPONS := {
 		"evolve": {"with": "health_regen", "into": "toxic_flood"},
 	},
 	"bat_swarm": {
-		"name": "Bat Swarm", "quote": "JUSTICE!!!!!", "icon": "bat_skill",
+		"name": "Bat Swarm", "quote": "JUSTICE!!!!!", "icon": "bat_skill", "locked": true,
 		"behavior": "summon", "sheet": "bat", "bite": 0.4,
 		"base": {"cooldown": 5.0, "damage": 6.0, "speed": 150.0, "duration": 4.0, "amount": 2, "pierce": -1},  # (orig) 5 / 1
 		"levels": [
@@ -183,7 +183,7 @@ const WEAPONS := {
 
 	# ================================================================ New weapons
 	"onion_ring": {
-		"name": "Onion Ring", "quote": "Smells like victory.", "icon": "onion_ring_skill",
+		"name": "Onion Ring", "quote": "Smells like victory.", "icon": "onion_ring_skill", "locked": true,
 		"behavior": "aura", "color": Color(0.85, 0.55, 0.95), "tick": 0.5,
 		"base": {"damage": 4.0, "area": 1.0, "knockback": 10.0, "range": 26.0},
 		"levels": [
@@ -198,7 +198,7 @@ const WEAPONS := {
 		"evolve": {"with": "snail_king", "into": "thriller_aura"},
 	},
 	"heartbeat": {
-		"name": "Heartbeat", "quote": "I LOVED HER!!!!", "icon": "heartbeat_skill",
+		"name": "Heartbeat", "quote": "I LOVED HER!!!!", "icon": "heartbeat_skill", "locked": true,
 		"behavior": "nova", "color": Color(1.0, 0.35, 0.4), "heal": 1.0,
 		"base": {"cooldown": 3.0, "damage": 12.0, "range": 70.0, "knockback": 50.0, "pierce": -1},
 		"levels": [
@@ -229,7 +229,7 @@ const WEAPONS := {
 		"evolve": {"with": "attack_up", "into": "divine_judgment"},
 	},
 	"candy_shotgun": {
-		"name": "Candy Corn Shotgun", "quote": "Trick AND treat.", "icon": "candy_shotgun_skill",
+		"name": "Candy Corn Shotgun", "quote": "Trick AND treat.", "icon": "candy_shotgun_skill", "locked": true,
 		"behavior": "shooter", "sheet": "candy_shot", "aim": "nearest", "spread": 0.22,
 		"base": {"cooldown": 1.6, "damage": 6.0, "speed": 220.0, "amount": 3, "pierce": 1, "range": 130.0},
 		"levels": [

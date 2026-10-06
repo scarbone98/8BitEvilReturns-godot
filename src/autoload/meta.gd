@@ -233,6 +233,11 @@ func _from_dict(d: Dictionary) -> void:
 			var ch: Dictionary = Db.CHARACTERS[cid]
 			if ch.has("feat") and feats.has(ch.feat) and not unlocked.has(cid):
 				unlocked.append(cid)
+	# Feats earned before an item was moved behind them still unlock it.
+	for f in feats:
+		for id in Db.FEATS.get(f, {}).get("unlocks", []):
+			if not unlocked.has(id):
+				unlocked.append(id)
 	cleared = d.get("cleared", [])
 	reapers = d.get("reapers", [])
 	nightmare = bool(d.get("nightmare", false))

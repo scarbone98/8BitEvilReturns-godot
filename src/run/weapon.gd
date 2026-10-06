@@ -150,7 +150,8 @@ func fire() -> bool:
 		"flask":
 			for k in amount():
 				var target := p + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(30, raw("range"))
-				var i: int = e.random_on_screen(run.view_rect_for(player))
+				# The first flask goes at whatever's closest; the rest anywhere on screen.
+				var i: int = e.nearest(p, raw("range") * 2.0) if k == 0 else e.random_on_screen(run.view_rect_for(player))
 				if i != -1 and (k == 0 or def.has("explode")):
 					target = e.pos[i]
 				shots.flask(self, target)

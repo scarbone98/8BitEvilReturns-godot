@@ -203,6 +203,8 @@ func _add_hero(seat: int, char_id: String, hero_mode: String, name: String):
 		h.view_size = get_viewport_rect().size
 	if not is_guest():
 		h.add_weapon(Db.CHARACTERS[char_id].weapon)
+		for k in int(Db.CHARACTERS[char_id].get("start_level", 1)) - 1:
+			h.upgrade(Db.CHARACTERS[char_id].weapon)
 	h.died.connect(_on_hero_down)
 	heroes[seat] = h
 	return h

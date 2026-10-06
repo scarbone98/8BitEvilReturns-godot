@@ -298,7 +298,9 @@ func upgrade_options(n := 3) -> Array:
 	var pool := []
 	for id in Db.WEAPONS:
 		var d: Dictionary = Db.WEAPONS[id]
-		if d.get("evolution", false) or not allowed.call(id):
+		# Locked content isn't offered, but what you already hold (a hero's
+		# starting weapon) always levels up.
+		if d.get("evolution", false) or not (weapons.has(id) or allowed.call(id)):
 			continue
 		if weapons.has(id):
 			if weapons[id].level < Db.weapon_max_level(id):
@@ -306,7 +308,7 @@ func upgrade_options(n := 3) -> Array:
 		elif _base_weapon_count() < Db.MAX_WEAPONS and not _owns_evolution_of(id):
 			pool.append(id)
 	for id in Db.PASSIVES:
-		if not allowed.call(id):
+		if not (passives.has(id) or allowed.call(id)):
 			continue
 		var lv: int = passives.get(id, 0)
 		if lv > 0 and lv < Db.PASSIVES[id].max_level:

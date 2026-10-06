@@ -15,9 +15,20 @@ extends RefCounted
 ## feat in characters.gd, so a feat can also exist just to unlock a hero.
 
 const FEATS := {
+	# Early ones come quickly and open up the starting pool, VS style: a new
+	# player has 6 weapons and the 7 original passives, everything else is here.
+	"survive_3": {"name": "Still Standing", "desc": "Survive 3 minutes", "check": {"run": "seconds", "min": 180}, "unlocks": ["cursed_sword"]},
+	"level_10": {"name": "Charged Up", "desc": "Reach level 10", "check": {"run": "level", "min": 10}, "unlocks": ["lightning"]},
+	"boss_1": {"name": "Big Game", "desc": "Defeat a boss", "check": {"run": "bosses", "min": 1}, "unlocks": ["scope"]},
+	"zombies_300": {"name": "Zombie Stomper", "desc": "Defeat 300 zombies (all runs)", "check": {"kind": "zombie", "min": 300}, "unlocks": ["acid"]},
+	"heal_100": {"name": "Heartfelt", "desc": "Recover 100 health in one run", "check": {"run": "healed", "min": 100}, "unlocks": ["heartbeat"]},
+	"candy_1000": {"name": "Snack Time", "desc": "Collect 1,000 candy (all runs)", "check": {"total": "candy", "min": 1000}, "unlocks": ["onion_ring"]},
+	"silver_500": {"name": "Piggy Bank", "desc": "Earn 500 silver (all runs)", "check": {"total": "silver", "min": 500}, "unlocks": ["candy_basket"]},
+	"chests_run_3": {"name": "Lucky Find", "desc": "Open 3 chests in one run", "check": {"run": "chests", "min": 3}, "unlocks": ["lucky_trophy"]},
+	"kills_run_500": {"name": "Night Flight", "desc": "Defeat 500 monsters in one run", "check": {"run": "kills", "min": 500}, "unlocks": ["bat_swarm"]},
 	"survive_5": {"name": "Night Owl", "desc": "Survive 5 minutes", "check": {"run": "seconds", "min": 300}, "unlocks": ["pumpkin_bomb"]},
 	"survive_10": {"name": "Graveyard Shift", "desc": "Survive 10 minutes", "check": {"run": "seconds", "min": 600}, "unlocks": ["crimson_crypt"]},
-	"survive_15": {"name": "Howl at the Moon", "desc": "Survive 15 minutes", "check": {"run": "seconds", "min": 900}, "unlocks": []},
+	"survive_15": {"name": "Howl at the Moon", "desc": "Survive 15 minutes", "check": {"run": "seconds", "min": 900}, "unlocks": ["pocket_watch"]},
 	"survive_20": {"name": "Swamp Legend", "desc": "Survive 20 minutes", "check": {"run": "seconds", "min": 1200}, "unlocks": []},
 	"patch_8": {"name": "Out to Pasture", "desc": "Survive 8 minutes in The Graveyard", "check": {"run": "seconds", "min": 480, "stage": "graveyard"}, "unlocks": ["pumpkin_patch"]},
 	"snow_8": {"name": "Cold Snap", "desc": "Survive 8 minutes in the Pumpkin Patch", "check": {"run": "seconds", "min": 480, "stage": "pumpkin_patch"}, "unlocks": ["snowbound"]},
@@ -28,9 +39,9 @@ const FEATS := {
 	"kills_1000": {"name": "Monster Masher", "desc": "Defeat 1,000 monsters (all runs)", "check": {"total": "kills", "min": 1000}, "unlocks": ["skull_toss"]},
 	"kills_2000": {"name": "Brains!", "desc": "Defeat 2,000 monsters (all runs)", "check": {"total": "kills", "min": 2000}, "unlocks": []},
 	"kills_run_1500": {"name": "Carpet Cleaner", "desc": "Defeat 1,500 monsters in one run", "check": {"run": "kills", "min": 1500}, "unlocks": ["airstrike"]},
-	"level_25": {"name": "Bone to Pick", "desc": "Reach level 25", "check": {"run": "level", "min": 25}, "unlocks": []},
+	"level_25": {"name": "Bone to Pick", "desc": "Reach level 25", "check": {"run": "level", "min": 25}, "unlocks": ["grave_dirt"]},
 	"level_50": {"name": "Heart of Gold", "desc": "Reach level 50", "check": {"run": "level", "min": 50}, "unlocks": ["heart_locket"]},
-	"chests_10": {"name": "Treasure Hunter", "desc": "Open 10 chests (all runs)", "check": {"total": "chests", "min": 10}, "unlocks": []},
+	"chests_10": {"name": "Treasure Hunter", "desc": "Open 10 chests (all runs)", "check": {"total": "chests", "min": 10}, "unlocks": ["candy_shotgun"]},
 	"bosses_10": {"name": "Shadow Hunter", "desc": "Defeat 10 bosses (all runs)", "check": {"total": "bosses", "min": 10}, "unlocks": []},
 	"candy_10000": {"name": "Sweet Tooth", "desc": "Collect 10,000 candy (all runs)", "check": {"total": "candy", "min": 10000}, "unlocks": []},
 	"evolve_1": {"name": "Evolution!", "desc": "Evolve a weapon", "check": {"run": "evolutions", "min": 1}, "unlocks": ["grave_hand"]},
