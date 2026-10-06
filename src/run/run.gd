@@ -69,6 +69,12 @@ var _reaper_clock := 0.0
 var _reapers_sent := 0
 var twist := ""            # this map's Nightmare twist (stages.gd), "" when not Nightmare
 var _twist_clock := 0.0
+const SWARM_SECONDS := 20.0  # how long a swarm minute's flood lasts
+const SWARM_RATE := 4.0      # fodder per second (before the time/curse/team ramp)
+const SWARM_HP := 0.25       # of a normal one's health: one hit drops them (and they bite half as hard)
+var _swarm_minute := -1
+var _swarm_dir := 0.0
+var _swarm_acc := 0.0
 var _hp_mul_now := 1.0     # the spawns' current toughness, for monsters twists add
 var _twist_count := 0      # dev reports: heals, puddles or blasts so far
 # Map quests (see quests.gd): what the whole team did this run.
@@ -466,11 +472,29 @@ func _spawn(delta: float) -> void:
 	var speed_mul: float = stage.get("speed_mul", 1.0) * (1.0 if nm == 1.0 else NIGHTMARE.speed)
 	var elite_chance: float = 0.0 if nm == 1.0 else NIGHTMARE.elite
 	_hp_mul_now = hp_mul
+	# Pacing, VS style: a normal minute, a hard one, then a swarm minute that
+	# eases off the regular spawns and floods in fodder from one side.
+	# The first five minutes stay gentle: no hard minute or swarm until 4:00
+	# and 5:00.
+	var beat := int(minute) % 3 if not attract and minute >= 4.0 else 0
+	var pace: float = [0.85, 1.2, 0.35][beat]
+	if beat == 2 and int(minute) != _swarm_minute:
+		_swarm_minute = int(minute)
+		_swarm_dir = randf() * TAU
+		_tell_everyone("A SWARM IS COMING!", UI.GOLD)
+	if beat == 2 and fmod(minute, 1.0) < SWARM_SECONDS / 60.0:
+		var fodder: String = stage.get("swarm", "skull")
+		_swarm_acc += SWARM_RATE * ramp * delta
+		while _swarm_acc >= 1.0:
+			_swarm_acc -= 1.0
+			if enemies.count() < cap:
+				var at := _offscreen_point(Db.ENEMIES[fodder].radius, _swarm_dir + randf_range(-0.6, 0.6))
+				enemies.spawn(fodder, at, hp_mul * SWARM_HP, false, speed_mul, false, 0.5)
 	for i in stage.spawns.size():
 		var sp: Dictionary = stage.spawns[i]
 		if minute < sp.from or minute >= sp.to:
 			continue
-		_spawn_acc[i] += sp.rate * ramp * delta
+		_spawn_acc[i] += sp.rate * ramp * pace * delta
 		while _spawn_acc[i] >= 1.0:
 			_spawn_acc[i] -= 1.0
 			if enemies.count() < cap:
@@ -493,13 +517,15 @@ func _spawn(delta: float) -> void:
 					enemies.spawn(ev.enemy, _offscreen_point(Db.ENEMIES[ev.enemy].radius * 2.0), hp_mul, true, speed_mul)
 
 ## Just off a random hero's screen, never inside a grave, tree or building.
-func _offscreen_point(r := 8.0) -> Vector2:
+## `angle` picks the side (NAN: anywhere around).
+func _offscreen_point(r := 8.0, angle := NAN) -> Vector2:
 	var alive := living_heroes()
 	var h = alive.pick_random() if not alive.is_empty() else player
 	var dist: float = h.view_size.length() * 0.5 + 16.0
 	var p := Vector2.ZERO
 	for attempt in 8:
-		p = h.position + Vector2.RIGHT.rotated(randf() * TAU) * dist
+		var a: float = randf() * TAU if is_nan(angle) else angle + randf_range(-0.15, 0.15)
+		p = h.position + Vector2.RIGHT.rotated(a) * dist
 		if obstacles.is_free(p, r):
 			return p
 	return obstacles.free_spot(p, r)

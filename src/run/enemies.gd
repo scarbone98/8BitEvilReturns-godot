@@ -90,7 +90,7 @@ func _ready() -> void:
 func count() -> int:
 	return pos.size()
 
-func spawn(k: String, at: Vector2, hp_mul := 1.0, is_boss := false, speed_mul := 1.0, is_elite := false) -> void:
+func spawn(k: String, at: Vector2, hp_mul := 1.0, is_boss := false, speed_mul := 1.0, is_elite := false, damage_mul := 1.0) -> void:
 	var d: Dictionary = Db.ENEMIES[k]
 	is_elite = is_elite and not is_boss
 	var s := 2.0 if is_boss else (1.5 if is_elite else 1.0)  # whole-pixel sizes stay sharp
@@ -103,7 +103,7 @@ func spawn(k: String, at: Vector2, hp_mul := 1.0, is_boss := false, speed_mul :=
 	hp.append(h)
 	max_hp.append(h)
 	speed.append(d.speed * speed_mul * (0.85 if is_boss else randf_range(0.9, 1.1)))
-	damage.append(d.damage * (1.5 if is_boss else (1.3 if is_elite else 1.0)))
+	damage.append(d.damage * damage_mul * (1.5 if is_boss else (1.3 if is_elite else 1.0)))
 	radius.append(d.radius * s)
 	scale_.append(s)
 	anim.append(randf() * 2.0)

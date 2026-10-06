@@ -17,6 +17,10 @@ extends RefCounted
 #   graves (graves burst into zombies), fountains (blood fountains heal
 #   monsters), pumpkin_burst (pumpkins explode after dying), blizzard (snow
 #   fog), ooze (pipes pour slowing puddles), darkness (only lit areas show).
+# Pacing (Run._spawn): gentle until 4:00, then minutes go hard, swarm, normal,
+#   hard, swarm... (swarms at 5:00, 8:00, 11:00...).
+#   A swarm minute thins the regular spawns and floods in `swarm` (default
+#   "skull") from one side: lots of them, but they drop in one hit.
 # Modifiers: hp_per_minute (how fast monsters toughen), speed_mul (monster
 # speed), silver_bonus (extra silver at the end). `locked` stages need the feat
 # that lists them in progression.gd.
@@ -101,7 +105,7 @@ const STAGES := {
 		],
 	},
 	"pumpkin_patch": {
-		"name": "Pumpkin Patch", "about": "Rows of grinning gourds, and something in the corn.",
+		"name": "Pumpkin Patch", "swarm": "pumpkin", "about": "Rows of grinning gourds, and something in the corn.",
 		"ground": "ground_pumpkin", "hp_per_minute": 0.4, "max_alive": 600, "locked": true, "silver_bonus": 0.2,
 		"props_per_chunk": [1, 4],
 		"obstacles": ["tree_3", "tree_owl", "candybasket", "street_lamp", "prop_hay_bale", "prop_pumpkin_pile", "prop_corn", "prop_fence", "prop_scarecrow"],
@@ -172,7 +176,7 @@ const STAGES := {
 		],
 	},
 	"sewers": {
-		"name": "The Sewers", "about": "Wide open tunnels. Nowhere to hide from what crawls up the drains.",
+		"name": "The Sewers", "swarm": "zombie", "about": "Wide open tunnels. Nowhere to hide from what crawls up the drains.",
 		"ground": "ground_sewer", "hp_per_minute": 0.45, "max_alive": 600, "locked": true, "silver_bonus": 0.4,
 		"props_per_chunk": [1, 4],
 		"obstacles": ["street_lamp", "prop_sewer_pipe", "prop_barrels", "prop_brick_pillar"],
@@ -203,7 +207,7 @@ const STAGES := {
 		],
 	},
 	"crypt_depths": {
-		"name": "Crypt Depths", "about": "Deep under the graveyard, where the bosses sleep. Not for long.",
+		"name": "Crypt Depths", "swarm": "ghost", "about": "Deep under the graveyard, where the bosses sleep. Not for long.",
 		"ground": "ground_crypt", "hp_per_minute": 0.6, "max_alive": 600, "locked": true, "silver_bonus": 0.6,
 		"props_per_chunk": [1, 4],
 		"obstacles": ["mausoleum", "grave_1_small", "prop_sarcophagus", "prop_broken_pillar", "prop_candelabra", "prop_open_grave"],

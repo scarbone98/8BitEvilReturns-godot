@@ -21,6 +21,7 @@ const STAT_DEFAULTS := {
 	"might": 0.0, "cooldown": 0.0, "area": 0.0, "proj_speed": 0.0,
 	"duration": 0.0, "amount": 0, "move": 0.0, "magnet": 0.0,
 	"growth": 0.0, "greed": 0.0, "luck": 0.0, "curse": 0.0, "revival": 0,
+	"weapon_slots": 0, "passive_slots": 0,  # beyond Db.MAX_WEAPONS / MAX_PASSIVES
 }
 
 var run
@@ -244,8 +245,14 @@ func add_weapon(id: String) -> void:
 	var w := Weapon.new(id, self, run)
 	weapons[id] = w
 	inv_rev += 1
-	if weapons.size() >= Db.MAX_WEAPONS:
+	if weapons.size() >= weapon_slots():
 		weapons_full = 1
+
+func weapon_slots() -> int:
+	return Db.MAX_WEAPONS + int(stats.weapon_slots)
+
+func passive_slots() -> int:
+	return Db.MAX_PASSIVES + int(stats.passive_slots)
 
 func upgrade(id: String) -> void:
 	if Db.WEAPONS.has(id):
@@ -305,7 +312,7 @@ func upgrade_options(n := 3) -> Array:
 		if weapons.has(id):
 			if weapons[id].level < Db.weapon_max_level(id):
 				pool.append(id)
-		elif _base_weapon_count() < Db.MAX_WEAPONS and not _owns_evolution_of(id):
+		elif _base_weapon_count() < weapon_slots() and not _owns_evolution_of(id):
 			pool.append(id)
 	for id in Db.PASSIVES:
 		if not (passives.has(id) or allowed.call(id)):
@@ -313,7 +320,7 @@ func upgrade_options(n := 3) -> Array:
 		var lv: int = passives.get(id, 0)
 		if lv > 0 and lv < Db.PASSIVES[id].max_level:
 			pool.append(id)
-		elif lv == 0 and passives.size() < Db.MAX_PASSIVES:
+		elif lv == 0 and passives.size() < passive_slots():
 			pool.append(id)
 	pool.shuffle()
 	var out := pool.slice(0, n)

@@ -1,11 +1,14 @@
 extends RefCounted
 ## Passive items. Each level adds `per_level` to the hero's stats (see
 ## Player.STAT_DEFAULTS). The first seven are (orig) names and descriptions
-## from the Unity build; their icons are guesses. Those seven are what a new
-## player starts with; the rest are `locked` until a feat (progression.gd).
+## from the Unity build; their icons are guesses. Those seven plus Ghost Step
+## are what a new player starts with; the rest are `locked` until a feat
+## (progression.gd).
 
-const MAX_WEAPONS := 6
-const MAX_PASSIVES := 6
+# Slots a hero starts with; the shop sells one more of each (weapon_slots /
+# passive_slots power-ups in progression.gd).
+const MAX_WEAPONS := 5
+const MAX_PASSIVES := 5
 
 const PASSIVES := {
 	"attack_up": {"name": "Attack Up", "desc": "Increases attack damage (10% increase)", "icon": "tentacle",
@@ -39,7 +42,7 @@ const PASSIVES := {
 		"per_level": {"amount": 1}, "max_level": 2},
 	"heart_locket": {"name": "Heart Locket", "desc": "Come back once when you fall", "icon": "heart", "locked": true,
 		"per_level": {"revival": 1}, "max_level": 1},
-	"ghost_step": {"name": "Ghost Step", "desc": "Move 10% faster", "icon": "ghost", "locked": true,
+	"ghost_step": {"name": "Ghost Step", "desc": "Move 10% faster", "icon": "ghost",
 		"per_level": {"move": 0.10}, "max_level": 5},
 }
 

@@ -2,6 +2,8 @@ extends RefCounted
 # ---------------------------------------------------------------- Enemies
 # hp/damage are at minute 0; the stage multiplies hp as time passes.
 # `faces` is the direction the art faces so it can be flipped to face the player.
+# Heroes walk at 64 (Player.BASE_MOVE): everything that hunts on foot stays
+# well under that so you can always break away (Reaper excepted).
 # `rooted` monsters never move or get knocked back. `shoot` makes a monster
 # fire a slow shot at the nearest hero within `range` every `every` seconds
 # (the shot is slower than a hero walks, so it can always be dodged).
@@ -11,7 +13,7 @@ const ENEMIES := {
 	"pumpkin": {"sheet": "pumpkin", "hp": 18.0, "speed": 30.0, "damage": 10.0, "radius": 6.0, "candy": 0, "faces": 1},
 	"ghost": {"sheet": "ghost", "hp": 22.0, "speed": 34.0, "damage": 10.0, "radius": 6.0, "candy": 1, "faces": 1, "fly": true, "alpha": 0.8},
 	"scarecrow": {"sheet": "scarecrow", "hp": 60.0, "speed": 24.0, "damage": 14.0, "radius": 8.0, "candy": 1, "faces": 1},
-	"werewolf": {"sheet": "werewolf", "hp": 45.0, "speed": 58.0, "damage": 14.0, "radius": 9.0, "candy": 1, "faces": 1},
+	"werewolf": {"sheet": "werewolf", "hp": 45.0, "speed": 46.0, "damage": 14.0, "radius": 9.0, "candy": 1, "faces": 1},
 	"shadowbeast": {"sheet": "shadowbeast", "hp": 90.0, "speed": 40.0, "damage": 18.0, "radius": 10.0, "candy": 1, "faces": 1},
 	"eye_stalk": {"sheet": "eye_stalk", "hp": 30.0, "speed": 0.0, "damage": 6.0, "radius": 7.0, "candy": 1, "faces": 1, "rooted": true,
 		"shoot": {"every": 3.0, "speed": 55.0, "damage": 6.0, "range": 200.0, "sheet": "orb_purple"}},

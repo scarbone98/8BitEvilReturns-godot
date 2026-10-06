@@ -55,7 +55,7 @@ const FEATS := {
 	"jon_10": {"name": "Coin Flip", "desc": "Survive 10 minutes as Jon", "check": {"run": "seconds", "min": 600, "char": "jon"}, "unlocks": ["silver_coin"]},
 	"silver_2000": {"name": "Big Spender", "desc": "Earn 2,000 silver (all runs)", "check": {"total": "silver", "min": 2000}, "unlocks": ["merchant_hat"]},
 	"heal_500": {"name": "Bloodbath", "desc": "Recover 500 health in one run", "check": {"run": "healed", "min": 500}, "unlocks": ["blood_trail"]},
-	"full_slots": {"name": "Fully Loaded", "desc": "Fill all 6 weapon slots", "check": {"run": "weapons_full", "min": 1}, "unlocks": []},
+	"full_slots": {"name": "Fully Loaded", "desc": "Fill every weapon slot", "check": {"run": "weapons_full", "min": 1}, "unlocks": []},
 	"walk_20k": {"name": "Restless Spirit", "desc": "Walk 20,000 steps (all runs)", "check": {"total": "distance", "min": 20000}, "unlocks": ["ghost_step"]},
 }
 
@@ -79,4 +79,7 @@ const POWERUPS := {
 	"greed": {"name": "Greed", "desc": "+10% silver", "icon": "candybasket", "stat": "greed", "per_rank": 0.10, "max": 5, "cost": 30},
 	"curse": {"name": "Curse", "desc": "+10% curse: harder, but more candy", "icon": "skull", "stat": "curse", "per_rank": 0.10, "max": 5, "cost": 160},
 	"revival": {"name": "Revival", "desc": "Come back once per run", "icon": "heart", "stat": "revival", "per_rank": 1, "max": 1, "cost": 1000},
+	# Heroes start with 5 weapon and 5 passive slots; these add the sixth.
+	"weapon_slot": {"name": "Weapon Slot", "desc": "+1 weapon slot", "icon": "weapon_slot_icon", "stat": "weapon_slots", "per_rank": 1, "max": 1, "cost": 800},
+	"passive_slot": {"name": "Passive Slot", "desc": "+1 passive slot", "icon": "passive_slot_icon", "stat": "passive_slots", "per_rank": 1, "max": 1, "cost": 600},
 }
