@@ -89,7 +89,26 @@ func _live(node: Node, refresh: Callable) -> void:
 # ---------------------------------------------------------------- Title
 
 func show_title() -> void:
-	var root := _screen_root()
+	# A live fight behind the menu: the selected hero on the selected map.
+	var screen := Node.new()
+	var fight := RunScript.new()
+	fight.process_mode = Node.PROCESS_MODE_PAUSABLE
+	screen.add_child(fight)
+	var layer := CanvasLayer.new()
+	layer.layer = 10  # over the fight's own layers
+	var root := Control.new()
+	root.theme = UI.theme()
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(root)
+	var dim := ColorRect.new()
+	dim.color = Color(0.03, 0.02, 0.06, 0.35)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.add_child(dim)
+	screen.add_child(layer)
+	_swap(screen)
+	var sid: String = Meta.stage if Db.STAGES.has(Meta.stage) and Meta.content_unlocked(Meta.stage) else "graveyard"
+	fight.start_attract(Meta.selected if Meta.is_unlocked(Meta.selected) else "joe", sid)
 	var box := VBoxContainer.new()
 	box.set_anchors_preset(Control.PRESET_FULL_RECT)
 	box.offset_left = 24; box.offset_right = -24
@@ -100,7 +119,9 @@ func show_title() -> void:
 	var logo := UI.icon(Db.tex("title"), 160)
 	logo.custom_minimum_size = Vector2(0, 128)
 	box.add_child(logo)
-	box.add_child(SheetView.new(Db.CHARACTERS[Meta.selected].run, Vector2(0, 40)))
+	var gap := Control.new()  # the hero stands here, in the fight behind
+	gap.custom_minimum_size = Vector2(0, 40)
+	box.add_child(gap)
 	var play := UI.button("PLAY", show_select, 28)
 	box.add_child(play)
 	# A co-op game this device dropped out of: offer to jump back in.

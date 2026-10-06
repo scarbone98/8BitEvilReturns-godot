@@ -62,6 +62,7 @@ const CLEAR_SECONDS := 1200.0
 const REAPER_EVERY := 60.0
 const NIGHTMARE := {"hp": 1.6, "spawn": 1.5, "speed": 1.15, "elite": 0.08, "events_at": 0.75, "silver": 1.5}
 var nightmare := false
+var attract := false       # the title screen's background fight: no HUD, no saving, no level-ups
 var cleared := false
 var reapers_slain := 0
 var _reaper_clock := 0.0
@@ -176,7 +177,8 @@ func start(char_id: String, p_stage := "graveyard", coop := {}, p_nightmare := f
 	hud.pause_pressed.connect(_show_pause)
 	root.add_child(hud)
 	obstacles.update_around(_hero_positions())
-	_place_relic()
+	if not attract:
+		_place_relic()
 	if nightmare and Db.STAGES[stage_id].has("twist"):
 		var tw: Dictionary = Db.STAGES[stage_id].twist
 		hud.toast.call_deferred("NIGHTMARE: %s" % tw.name, UI.RED)
@@ -369,7 +371,8 @@ func _tick(delta: float) -> void:
 	if is_guest():
 		_guest_tick(delta)
 		return
-	time += delta
+	if not attract:
+		time += delta
 	if not cleared and time >= CLEAR_SECONDS:
 		_clear_map()
 	for h in heroes.values():
@@ -390,7 +393,8 @@ func _tick(delta: float) -> void:
 	pickups.step(delta)
 	popups.step(delta)
 	_check_relic()
-	_check_quests(delta)
+	if not attract:
+		_check_quests(delta)
 	_ooze_check()
 	if _stuck_check:
 		_sample_stuck(delta)
@@ -433,7 +437,7 @@ func _follow_camera() -> void:
 	ground.position = (player.position / Vector2(640, 400)).floor() * Vector2(640, 400)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel") and not ended and _modal == null:
+	if event.is_action_pressed("ui_cancel") and not ended and _modal == null and not attract:
 		_show_pause()
 
 # ---------------------------------------------------------------- Spawning
@@ -455,8 +459,8 @@ func _spawn(delta: float) -> void:
 	var nm: float = 1.0 if not nightmare else 0.0  # 1 normal, 0 nightmare (for the lerps below)
 	var hp_pm: float = float(stage.hp_per_minute) * (1.0 if nm == 1.0 else NIGHTMARE.hp)
 	var hp_mul := (1.0 + minute * hp_pm) * (1.0 + curse) * (1.0 + (team - 1.0) * 0.5)
-	var ramp := (1.0 + minute * 0.15) * (1.0 + curse) * team * (1.0 if nm == 1.0 else NIGHTMARE.spawn)
-	var cap: int = stage.max_alive if not dev_unlimited else 100000
+	var ramp := (1.0 + minute * 0.15) * (1.0 + curse) * team * (1.0 if nm == 1.0 else NIGHTMARE.spawn) * (3.0 if attract else 1.0)
+	var cap: int = (stage.max_alive if not dev_unlimited else 100000) if not attract else 70
 	var speed_mul: float = stage.get("speed_mul", 1.0) * (1.0 if nm == 1.0 else NIGHTMARE.speed)
 	var elite_chance: float = 0.0 if nm == 1.0 else NIGHTMARE.elite
 	_hp_mul_now = hp_mul
@@ -521,6 +525,8 @@ func _on_enemy_died(at: Vector2, kind: String, is_boss: bool, attacker: int, is_
 		_tell_everyone("THE REAPER IS SLAIN!", UI.GOLD)
 		if autoplay:
 			print("[reaper] slain at %s by seat %d" % [UI.time_text(time), attacker])
+	if attract:
+		return  # the title screen's fight drops nothing
 	if is_boss:
 		h.bosses += 1
 		boss_kinds[kind] = true
@@ -616,6 +622,8 @@ func _panel(title: String, title_col := UI.GOLD) -> VBoxContainer:
 	return box
 
 func _on_level_up() -> void:
+	if attract:
+		return
 	_pending_levels += 1
 	if _modal == null and _awaiting.is_empty():
 		_next_level_up()
@@ -1040,6 +1048,31 @@ func _sample_stuck(delta: float) -> void:
 		_stuck_printed = int(time / 30.0)
 		print("[stuck] %s: %d of %d this sample; run so far %d of %d (%.1f%%); moved by the safety net %d; pickups %d" % [UI.time_text(time), stuck, checked,
 			_stuck_total.x, _stuck_total.y, 100.0 * _stuck_total.x / maxf(1.0, _stuck_total.y), enemies.relocated, pickups.list.size()])
+
+# ---------------------------------------------------------------- Title screen
+
+const ATTRACT_WEAPONS := ["soul_eater", "hellfire", "thunderstorm", "vampire_swarm", "gatling_crossbow",
+	"blood_moon", "ghost_lantern", "jacks_inferno", "eldritch_horror", "arc_reactor"]
+
+## The title screen's fight: the hero holds the middle with a few flashy
+## evolved weapons while a steady crowd walks in. Clock stopped at 3:00, no
+## bosses or events, nothing saved, can't die.
+func start_attract(char_id: String, p_stage: String) -> void:
+	attract = true
+	dev = true
+	start(char_id, p_stage)
+	hud.visible = false
+	time = 180.0
+	for i in stage.events.size():
+		_events_done[i] = true
+	player.god = true
+	player.autopilot = true
+	player.stand = true
+	# One flashy evolution, and the hero's own weapon a few levels up: strong
+	# enough to hold, weak enough that the crowd gets close.
+	player.upgrade(ATTRACT_WEAPONS.pick_random())
+	for k in 3:
+		player.upgrade(Db.CHARACTERS[char_id].weapon)
 
 # ---------------------------------------------------------------- Nightmare twists
 
