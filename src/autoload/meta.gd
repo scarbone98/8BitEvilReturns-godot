@@ -265,6 +265,10 @@ func _write_local() -> void:
 		f.store_string(JSON.stringify(d))
 
 func _load() -> void:
+	# Dev: `unlockall&silver=N` starts with N silver (still never saved).
+	if dev_unlock_all and Bridge.flags().has("silver"):
+		silver = int(Bridge.flags().silver)
+		return
 	if not FileAccess.file_exists(SAVE_PATH):
 		return
 	var d = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))

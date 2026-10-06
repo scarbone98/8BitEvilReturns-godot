@@ -73,9 +73,8 @@ func _page(title: String) -> VBoxContainer:
 	return box
 
 func _scroll(child: Control) -> ScrollContainer:
-	var sc := ScrollContainer.new()
+	var sc := TouchScroll.new()
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	child.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sc.add_child(child)
 	return sc

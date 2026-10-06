@@ -1342,8 +1342,7 @@ func show_results(r: Dictionary) -> void:
 			_wrap(l)
 	box = outer
 	if rewards.get_child_count() > 0:
-		var scroll := ScrollContainer.new()
-		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		var scroll := TouchScroll.new()
 		scroll.add_child(rewards)
 		# About 16px a line; at most what's left after the fixed rows.
 		var room := get_viewport_rect().size.y - 230.0
