@@ -47,6 +47,7 @@ const SHEETS := {
 	"vacusuck": {"path": "vacusuck", "frames": 5, "fps": 8},
 	"holy_cross": {"path": "holy_cross", "frames": 10, "fps": 10},
 	"merchant": {"path": "merchant_body", "frames": 5, "fps": 6},
+	"mr_hat": {"path": "mr_hat", "frames": 5, "fps": 6},
 	"street_lamp": {"path": "street_lamp", "frames": 4, "fps": 6},
 	"hand": {"path": "hand", "frames": 4, "fps": 12},
 	"merchant_hat": {"path": "merchant_hat", "frames": 1, "fps": 1},
@@ -95,5 +96,6 @@ const SHEETS := {
 	"ice_shard": {"path": "ice_shard", "frames": 1, "fps": 1},
 	"goo_glob": {"path": "goo_glob", "frames": 2, "fps": 6},
 	"reaper": {"path": "reaper", "frames": 4, "fps": 5},
+	"elite_mark": {"path": "elite_mark", "frames": 4, "fps": 8},
 	"crosshair": {"path": "crosshair_new", "frames": 1, "fps": 1},
 }

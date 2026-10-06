@@ -58,7 +58,6 @@ const STAGES := {
 			{"at": 12.0, "type": "boss", "enemy": "shadowbeast"},
 			{"at": 15.0, "type": "boss", "enemy": "swampthing"},
 			{"at": 18.0, "type": "ring", "enemy": "werewolf", "count": 40},
-			{"at": 20.0, "type": "boss", "enemy": "swampthing"},
 		],
 	},
 	"crimson_crypt": {

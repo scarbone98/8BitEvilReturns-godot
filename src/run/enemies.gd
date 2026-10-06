@@ -93,7 +93,7 @@ func count() -> int:
 func spawn(k: String, at: Vector2, hp_mul := 1.0, is_boss := false, speed_mul := 1.0, is_elite := false) -> void:
 	var d: Dictionary = Db.ENEMIES[k]
 	is_elite = is_elite and not is_boss
-	var s := 2.0 if is_boss else (1.3 if is_elite else 1.0)
+	var s := 2.0 if is_boss else (1.5 if is_elite else 1.0)  # whole-pixel sizes stay sharp
 	if is_elite:
 		hp_mul *= 3.0
 	kind.append(k)
@@ -540,6 +540,14 @@ func _draw_one(ci: CanvasItem, i: int, player_x: float) -> void:
 		# Elites smoulder: a red tint that pulses.
 		var glow := 0.5 + sin(anim[i] * 6.0) * 0.12
 		col = Color(1.0, glow, glow * 0.85, col.a)
+	if elite[i] == 1:
+		# Elites stand in a pulsing ember ring...
+		var pulse := 0.5 + sin(anim[i] * 5.0) * 0.5
+		var feet := Vector2(pos[i].x, feet_y(i))
+		ci.draw_set_transform(feet, 0.0, Vector2(1.0, 0.45))
+		ci.draw_circle(Vector2.ZERO, w * 0.42 + pulse, Color(1.0, 0.25, 0.1, 0.25 + pulse * 0.2), false, 1.0)
+		ci.draw_circle(Vector2.ZERO, w * 0.3, Color(0.8, 0.05, 0.05, 0.18))
+		ci.draw_set_transform(Vector2.ZERO)
 	if flip:
 		# Mirror around the enemy's centre line.
 		ci.draw_set_transform(Vector2(pos[i].x, 0.0), 0.0, Vector2(-1, 1))
@@ -547,6 +555,12 @@ func _draw_one(ci: CanvasItem, i: int, player_x: float) -> void:
 		ci.draw_set_transform(Vector2.ZERO)
 	else:
 		ci.draw_texture_rect_region(s._tex, rect, src, col)
+	if elite[i] == 1:
+		# ...with a flaming skull bobbing over their heads.
+		var m := Db.sheet("elite_mark")
+		var bob := roundf(sin(anim[i] * 3.0))
+		ci.draw_texture_rect_region(m._tex, Rect2(roundf(pos[i].x - m._w * 0.5), rect.position.y - m._h - 1 + bob, m._w, m._h),
+			Db.frame_rect(m, anim[i]))
 	if boss[i] == 1:
 		var bw := 30.0
 		var by := feet_y(i) + 3

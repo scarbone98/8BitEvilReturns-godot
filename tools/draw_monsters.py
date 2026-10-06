@@ -229,6 +229,34 @@ def reaper():
         frames.append(im)
     return frames
 
+# ---------------------------------------------------------------- Elite mark
+def elite_mark():
+    """Floats over Nightmare's elites: a little horned skull wreathed in red
+    flame. 12x12, 4 flicker frames."""
+    bone, bone2, eye = hexc("efe8d6"), hexc("b8ae96"), hexc("ff2a2a")
+    horn = hexc("6a1a1a")
+    flame = [hexc("ffd23a"), hexc("ff7a1a"), hexc("d81e1e"), hexc("7a0a14")]
+    frames = []
+    for k in range(4):
+        im = new(12, 12)
+        # flames licking up behind the skull, a different shape each frame
+        tips = [[2, 0, 3, 1, 0, 2], [0, 2, 1, 3, 1, 0], [3, 1, 0, 2, 0, 1], [1, 3, 2, 0, 2, 3]][k]
+        for i, t in enumerate(tips):
+            x = 3 + i
+            for y in range(t, 9):
+                c = flame[3] if y > 6 else flame[2] if y > 4 else flame[1] if y > t + 1 else flame[0]
+                put(im, x, y, c)
+        put(im, 2, 5 + k % 2, flame[2]); put(im, 9, 6 - k % 2, flame[2])
+        # horns and skull
+        rows(im, 2, 3, ["h......h", "hh....hh"], {"h": horn})
+        rows(im, 3, 4, [".bbbb.", "bbbbbb", "beebee", "bbbbbb", ".mbbm.", "..mm.."],
+             {"b": bone, "e": eye, "m": bone2})
+        if k % 2 == 0:
+            put(im, 4, 6, hexc("ffb0a0")); put(im, 7, 6, hexc("ffb0a0"))
+        outline(im, hexc("1a0408"))
+        frames.append(im)
+    return frames
+
 if __name__ == "__main__":
     A.save(sheet(eye_stalk()), "eye_stalk")
     A.save(sheet(gourd_spitter()), "gourd_spitter")
@@ -239,3 +267,4 @@ if __name__ == "__main__":
     A.save(sheet(ice_shard()), "ice_shard")
     A.save(sheet(goo_glob()), "goo_glob")
     A.save(sheet(reaper()), "reaper")
+    A.save(sheet(elite_mark()), "elite_mark")
