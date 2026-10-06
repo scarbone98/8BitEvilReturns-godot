@@ -64,6 +64,7 @@ var dead := false
 var god := false  # dev: takes no damage (stuck tests)
 var stand := false  # dev: the bot picks cards but never walks
 var autopilot := false
+var smart_bot := false  # dev flag `smart`: the bot kites and builds like a strong player
 
 # Touch joystick: drag anywhere on screen.
 var _touch_id := -1
@@ -167,7 +168,7 @@ func step(delta: float, simulate := true, fire := false) -> void:
 		if _touch_id != -1 and _touch_vec.length() > 0.15:
 			dir = _touch_vec.limit_length(1.0)
 		if autopilot:
-			dir = Vector2.ZERO if stand else _bot_dir()
+			dir = Vector2.ZERO if stand else (_smart_dir() if smart_bot else _bot_dir())
 		moving = dir.length() > 0.1
 		if moving:
 			facing = dir.normalized()
@@ -207,6 +208,69 @@ func _bot_dir() -> Vector2:
 			return to.normalized()
 		return to.orthogonal().normalized() * 0.5
 	return Vector2.RIGHT.rotated(_anim * 0.4) * 0.5
+
+## The strong-player bot (balance testing): tries 16 directions and takes
+## the one whose spot a step ahead is furthest from monsters and their shots,
+## clear of props, and nearest candy when that's safe.
+func _smart_dir() -> Vector2:
+	var e = run.enemies
+	var best := Vector2.ZERO
+	var best_s := -INF
+	var candy := Vector2.ZERO
+	var near_d := 220.0
+	for p in run.pickups.list:
+		var d: float = p.pos.distance_to(position)
+		if d < near_d:
+			near_d = d
+			candy = (p.pos - position).normalized()
+	for k in 17:
+		var dir := Vector2.ZERO if k == 16 else Vector2.RIGHT.rotated(TAU * k / 16.0)
+		var at := position + dir * 26.0
+		if k < 16 and not run.obstacles.is_free(position + dir * 10.0, 6.0):
+			continue
+		var s := 0.0
+		for i in e.query_circle(at, 60.0):
+			var d := maxf(at.distance_to(e.pos[i]) - e.radius[i], 4.0)
+			s -= e.damage[i] / (d * d)
+		for b in e.bullets:
+			var d := maxf(at.distance_to(b.pos), 4.0)
+			if d < 60.0:
+				s -= b.damage / (d * d)
+		s += dir.dot(candy) * 0.02
+		s += dir.dot(_bot_wander) * 0.001  # keeps it roaming instead of dithering
+		if s > best_s:
+			best_s = s
+			best = dir
+	if randf() < 0.01:
+		_bot_wander = Vector2.RIGHT.rotated(randf() * TAU)
+	return best
+
+var _bot_wander := Vector2.RIGHT
+
+## Strong-player upgrade choice: finish weapons, chase evolutions, build
+## three or four weapons early, then defence and damage passives.
+func bot_pick(options: Array) -> int:
+	var best := 0
+	var best_s := -INF
+	var partners := {}
+	for w in weapons:
+		var d: Dictionary = Db.WEAPONS[w]
+		if d.get("evolve") is Dictionary:
+			partners[d.evolve.with] = true
+	const GOOD := {"attack_up": 7.0, "tome_of_speed": 7.0, "max_health": 6.0, "snail_king": 6.5, "health_regen": 5.0, "experience_up": 4.5, "vacuusuck": 3.0}
+	for i in options.size():
+		var id: String = options[i]
+		var s := 0.0
+		if Db.WEAPONS.has(id):
+			s = 10.0 + level_of(id) * 0.2 if weapons.has(id) else (9.0 if weapons.size() < 4 else 3.0)
+		elif Db.PASSIVES.has(id):
+			s = 9.5 if partners.has(id) else GOOD.get(id, 4.0)
+			if passives.has(id):
+				s += 0.5
+		if s > best_s:
+			best_s = s
+			best = i
+	return best
 
 func take_hit(amount: float) -> void:
 	if _invuln > 0.0 or dead or away or god:

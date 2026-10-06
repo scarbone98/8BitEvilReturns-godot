@@ -69,6 +69,7 @@ var _reaper_clock := 0.0
 var _reapers_sent := 0
 var twist := ""            # this map's Nightmare twist (stages.gd), "" when not Nightmare
 var _twist_clock := 0.0
+const LATE_HP := 0.04              # extra toughness per (minute past 10)^2
 const BOSS_HP_PER_LEVEL := 0.05   # +5% boss health per team level
 const CONTACT_PER_MINUTE := 0.03  # +3% contact damage per minute
 const SWARM_HP := 0.25       # of a normal one's health: one hit drops them (and they bite half as hard)
@@ -210,7 +211,10 @@ func _add_hero(seat: int, char_id: String, hero_mode: String, name: String):
 	h.player_name = name
 	world.add_child(h)
 	var mine := hero_mode == "local"
-	h.setup(char_id, Meta.powerup_stats() if mine and not dev else {})
+	var bonus: Dictionary = Meta.powerup_stats() if mine and not dev else {}
+	if mine and Bridge.flags().has("veteran"):  # checked here: dev isn't set yet for the first hero
+		bonus = _veteran_stats()
+	h.setup(char_id, bonus)
 	if mine:
 		h.view_size = get_viewport_rect().size
 	if not is_guest():
@@ -281,6 +285,7 @@ func apply_dev_flags(f: Dictionary) -> void:
 	dev_unlimited = f.has("horde")
 	autoplay = f.has("autoplay")
 	player.autopilot = autoplay
+	player.smart_bot = autoplay and f.has("smart")
 	if f.has("give"):
 		for id in str(f.give).split(","):
 			if Db.WEAPONS.has(id) or Db.PASSIVES.has(id):
@@ -472,7 +477,10 @@ func _spawn(delta: float) -> void:
 	_twist_tick(delta)
 	var nm: float = 1.0 if not nightmare else 0.0  # 1 normal, 0 nightmare (for the lerps below)
 	var hp_pm: float = float(stage.hp_per_minute) * (1.0 if nm == 1.0 else NIGHTMARE.hp)
-	var hp_mul := (1.0 + minute * hp_pm) * (1.0 + curse) * (1.0 + (team - 1.0) * 0.5)
+	# Toughness climbs gently, then faster after 10:00 so the last stretch
+	# asks for a built-up profile (power-ups, unlocks, the sixth slots).
+	var late := maxf(0.0, minute - 10.0)
+	var hp_mul := (1.0 + minute * hp_pm + LATE_HP * late * late) * (1.0 + curse) * (1.0 + (team - 1.0) * 0.5)
 	var ramp := (1.0 + minute * 0.15) * (1.0 + curse) * team * (1.0 if nm == 1.0 else NIGHTMARE.spawn) * (3.0 if attract else 1.0)
 	var cap: int = (stage.max_alive if not dev_unlimited else 100000) if not attract else 70
 	var speed_mul: float = stage.get("speed_mul", 1.0) * (1.0 if nm == 1.0 else NIGHTMARE.speed)
@@ -559,6 +567,16 @@ func _wave_tick(delta: float, hp_mul: float, speed_mul: float, elite_chance: flo
 				var side := _swarm_dir + (PI if _swarm_sides == 2 and randi() % 2 == 0 else 0.0)
 				var at := _offscreen_point(Db.ENEMIES[fodder].radius, side + randf_range(-0.6, 0.6))
 				enemies.spawn(fodder, at, hp_mul * SWARM_HP, false, speed_mul, false, 0.5)
+
+## Dev flag `veteran`: every power-up at max rank (curse left out), for
+## testing what a built-up profile can do.
+func _veteran_stats() -> Dictionary:
+	var out := {}
+	for id in Db.POWERUPS:
+		var p: Dictionary = Db.POWERUPS[id]
+		if p.stat != "curse":
+			out[p.stat] = out.get(p.stat, 0) + p.per_rank * int(p.max)
+	return out
 
 ## Bosses grow with the team's level (like VS), so a strong build still has
 ## to work for them.
@@ -798,7 +816,9 @@ func show_level_up(options: Array, on_pick: Callable) -> void:
 			card.focus_entered.connect(func(): hand.say(line))
 			card.mouse_entered.connect(func(): hand.say(line))).call_deferred()
 	if autoplay:
-		first.call_deferred("emit_signal", "pressed")
+		var pick: int = player.bot_pick(options) if player.smart_bot else 0
+		var cards := box.get_children().slice(box.get_child_count() - options.size())
+		cards[pick].call_deferred("emit_signal", "pressed")
 
 ## What the hand man says about a card: the item's own quote if it has one.
 func _card_line(id: String) -> String:

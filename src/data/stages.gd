@@ -52,11 +52,11 @@ const PACING := [
 	{"roles": ["fast", "flier"], "min": 55, "rate": 4.0},                  # 12 hard
 	{"roles": ["mid", "tank", "grunt"], "min": 60, "rate": 4.0},           # 13
 	{"roles": ["giant", "heavy", "grunt"], "min": 35, "rate": 2.0, "swarm": [150, 20]},  # 14
-	{"roles": ["all"], "min": 70, "rate": 5.0},                            # 15
-	{"roles": ["all"], "min": 80, "rate": 5.5, "swarm": [200, 25]},        # 16
-	{"roles": ["all"], "min": 95, "rate": 6.5},                            # 17
-	{"roles": ["all"], "min": 110, "rate": 7.0, "swarm": [250, 25]},       # 18
-	{"roles": ["all"], "min": 130, "rate": 8.0, "swarm": [300, 30], "sides": 2},  # 19
+	{"roles": ["all"], "min": 150, "rate": 9.0},                           # 15
+	{"roles": ["all"], "min": 180, "rate": 10.0, "swarm": [220, 25]},      # 16
+	{"roles": ["all"], "min": 220, "rate": 12.0},                          # 17
+	{"roles": ["all"], "min": 260, "rate": 14.0, "swarm": [280, 25]},      # 18
+	{"roles": ["all"], "min": 300, "rate": 16.0, "swarm": [350, 30], "sides": 2},  # 19
 ]
 
 const STAGES := {
