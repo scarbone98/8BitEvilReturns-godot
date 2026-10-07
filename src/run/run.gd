@@ -298,6 +298,12 @@ func apply_dev_flags(f: Dictionary) -> void:
 		# Stress test: fill the field with this many enemies right away.
 		for k in int(f.horde):
 			enemies.spawn(Db.ENEMIES.keys().pick_random(), obstacles.free_spot(player.position + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(60, 300), 8.0))
+	if f.has("stand"):
+		player.stand = true  # dev: the bot stays put (it still picks cards)
+	if f.has("candyfield"):
+		# Dev: scatter N candy around the start, e.g. to test co-op snapshots.
+		for k in int(f.candyfield):
+			pickups.drop_candy(player.position + Vector2(randf_range(-170, 170), randf_range(-260, 260)), randi() % 3)
 	if f.has("teleport"):
 		# Dev: start somewhere far away (x,y), e.g. to test co-op players far apart.
 		var xy: PackedStringArray = str(f.teleport).split(",")

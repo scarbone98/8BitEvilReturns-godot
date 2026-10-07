@@ -17,6 +17,7 @@ const K_SHOTS := 88  # X
 const K_INPUT := 73  # I
 const K_JSON := 74   # J
 const SNAP_EVERY := 1.0 / 30.0
+const MAX_SNAPSHOT_PICKUPS := 600  # 5 bytes each: 3KB, inside the relay's 8KB messages
 const INPUT_EVERY := 1.0 / 60.0  # our hero's position: as fresh as we can send it
 # Guests draw a little behind the newest snapshot so they can blend between
 # two. How far adapts to the connection: one snapshot gap plus enough to
@@ -176,12 +177,17 @@ func _send_snapshot_to(seat: int, h) -> void:
 		b.put_u8(flags)
 		b.put_u8(int(clampf(o.hp / maxf(o.max_hp(), 1.0), 0.0, 1.0) * 255))
 		b.put_u8(_char_ids.find(o.char_id))
+	# Everything on the floor in their view. The floor holds at most
+	# Pickups.MAX_CANDY candy plus a few items, so this normally all fits; if
+	# it ever doesn't, the nearest go first, so the set doesn't reshuffle (and
+	# candy blink) as they move.
 	var picks := []
 	for p in run.pickups.list:
 		if view.has_point(p.pos):
 			picks.append(p)
-			if picks.size() >= 400:
-				break
+	if picks.size() > MAX_SNAPSHOT_PICKUPS:
+		picks.sort_custom(func(x, y): return x.pos.distance_squared_to(origin) < y.pos.distance_squared_to(origin))
+		picks.resize(MAX_SNAPSHOT_PICKUPS)
 	b.put_u16(picks.size())
 	for p in picks:
 		b.put_u8(run.pickups.mirror_code(p))
@@ -413,6 +419,8 @@ var _origin := Vector2.ZERO
 ## Bot guests (testing): how many pickups that were already there arrive a
 ## pixel or two from where the last snapshot put them (candy shouldn't move).
 var _jit_prev := {}
+var _jit_gone := {}       # key -> seconds since it vanished (to spot blinking)
+var _blinks := 0
 var _jit := Vector2i.ZERO  # (jittered, compared)
 var _jit_clock := 0
 func _count_pickup_jitter(entries: Array) -> void:
@@ -420,11 +428,27 @@ func _count_pickup_jitter(entries: Array) -> void:
 	for e in entries:
 		var key := Vector2i((e[1] / 6.0).round())  # same candy, give or take a few px
 		now[key] = e[1]
-		if _jit_prev.has(key):
+		var off: Vector2 = e[1] - run.player.position
+		if _jit_prev.has(key) and off.length() > 80.0 and absf(off.x) < 100.0 and absf(off.y) < 180.0:
 			var d: float = e[1].distance_to(_jit_prev[key])
 			_jit += Vector2i(1 if d > 0.1 and d < 3.0 else 0, 1)
+	# Blinking: candy that vanished and came back within half a second.
+	var me: Vector2 = run.player.position
+	for key in _jit_prev:
+		var at: Vector2 = _jit_prev[key]
+		var off := at - me
+		# Only where nothing should vanish: out of magnet reach, well on screen.
+		if not now.has(key) and off.length() > 80.0 and absf(off.x) < 100.0 and absf(off.y) < 180.0:
+			_jit_gone[key] = Time.get_ticks_msec()
+	for key in now:
+		if _jit_gone.has(key):
+			if Time.get_ticks_msec() - _jit_gone[key] < 500:
+				_blinks += 1
+			_jit_gone.erase(key)
 	_jit_prev = now
 	if Time.get_ticks_msec() - _jit_clock > 10000:
+		print("[pickblink] %d pickups blinked out and back (%d in this snapshot)" % [_blinks, entries.size()])
+		_blinks = 0
 		_jit_clock = Time.get_ticks_msec()
 		print("[pickjit] %d of %d pickups jumped 1-2px between snapshots (%d in view)" % [_jit.x, _jit.y, entries.size()])
 		_jit = Vector2i.ZERO
