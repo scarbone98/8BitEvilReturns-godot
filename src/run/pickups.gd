@@ -103,10 +103,13 @@ func mirror_apply(entries: Array) -> void:
 	list.clear()
 	for e in entries:
 		var code: int = e[0]
+		# `t` drives the spin and bob. Snapshots don't carry it, so it's
+		# a phase from the position, run on the frame clock in _draw.
+		var phase := fmod(absf(e[1].x * 0.37 + e[1].y * 0.61), 10.0)
 		if code < 3:
-			list.append({"type": "candy", "tier": code, "pos": e[1], "t": t})
+			list.append({"type": "candy", "tier": code, "pos": e[1], "t": t, "phase": phase})
 		elif code < MIRROR_TYPES.size():
-			list.append({"type": MIRROR_TYPES[code], "pos": e[1], "t": t})
+			list.append({"type": MIRROR_TYPES[code], "pos": e[1], "t": t, "phase": phase})
 	queue_redraw()
 
 # Redraw every frame (guests only get new positions per snapshot) so the
@@ -122,7 +125,10 @@ func _draw() -> void:
 	# same texels on screen while the view slides.
 	var to_screen := get_viewport().get_final_transform() * get_global_transform_with_canvas()
 	var to_local := to_screen.affine_inverse()
+	var clock := Time.get_ticks_msec() / 1000.0
 	for p in list:
+		if p.has("phase"):
+			p.t = clock + p.phase  # a co-op guest's copy: animate every frame
 		var bob := sin(p.t * 4.0) * 1.0
 		if p.type == "candy":
 			var s := Db.sheet(Db.CANDY[p.tier].sheet)

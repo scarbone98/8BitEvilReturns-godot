@@ -139,7 +139,9 @@ func _send_snapshots() -> void:
 	run.popups.fresh.clear()
 
 func _send_snapshot_to(seat: int, h) -> void:
-	var origin: Vector2 = h.position
+	# Whole pixels: things that stand still (candy) then arrive at exactly the
+	# same spot every snapshot instead of wobbling with the hero's fractions.
+	var origin: Vector2 = h.position.round()
 	var view: Rect2 = run.view_rect_for(h).grow(80)
 	# S: header, heroes, pickups
 	var b := StreamPeerBuffer.new()
@@ -248,8 +250,8 @@ func _send_chunk(seat: int, kind: int, flag: int, count: int, rows: StreamPeerBu
 
 func _put_off(b: StreamPeerBuffer, p: Vector2, origin: Vector2) -> void:
 	var d := p - origin
-	b.put_16(int(clampf(d.x, -32000, 32000)))
-	b.put_16(int(clampf(d.y, -32000, 32000)))
+	b.put_16(roundi(clampf(d.x, -32000, 32000)))
+	b.put_16(roundi(clampf(d.y, -32000, 32000)))
 
 func _put_color(b: StreamPeerBuffer, c: Color) -> void:
 	b.put_u8(c.r8)
@@ -408,6 +410,25 @@ func _off(b: StreamPeerBuffer, origin: Vector2) -> Vector2:
 
 var _origin := Vector2.ZERO
 
+## Bot guests (testing): how many pickups that were already there arrive a
+## pixel or two from where the last snapshot put them (candy shouldn't move).
+var _jit_prev := {}
+var _jit := Vector2i.ZERO  # (jittered, compared)
+var _jit_clock := 0
+func _count_pickup_jitter(entries: Array) -> void:
+	var now := {}
+	for e in entries:
+		var key := Vector2i((e[1] / 6.0).round())  # same candy, give or take a few px
+		now[key] = e[1]
+		if _jit_prev.has(key):
+			var d: float = e[1].distance_to(_jit_prev[key])
+			_jit += Vector2i(1 if d > 0.1 and d < 3.0 else 0, 1)
+	_jit_prev = now
+	if Time.get_ticks_msec() - _jit_clock > 10000:
+		_jit_clock = Time.get_ticks_msec()
+		print("[pickjit] %d of %d pickups jumped 1-2px between snapshots (%d in view)" % [_jit.x, _jit.y, entries.size()])
+		_jit = Vector2i.ZERO
+
 func _read_snapshot(data: PackedByteArray) -> void:
 	var b := StreamPeerBuffer.new()
 	b.data_array = data
@@ -523,6 +544,8 @@ func _read_shots(data: PackedByteArray) -> void:
 		_newest_ms = now_ms
 		_building = {}
 		run.pickups.mirror_apply(_frames[-1].pickups)
+		if run.autoplay:
+			_count_pickup_jitter(_frames[-1].pickups)
 
 ## Draws the world render_delay behind the newest snapshot, blending between
 ## the two snapshots either side of that moment.
