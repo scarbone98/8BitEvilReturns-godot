@@ -74,7 +74,8 @@ const BOSS_HP_PER_LEVEL := 0.05   # +5% boss health per team level
 const CONTACT_PER_MINUTE := 0.03  # +3% contact damage per minute
 const SWARM_HP := 0.25       # of a normal one's health: one hit drops them (and they bite half as hard)
 var _wave_acc := 0.0
-var _topup_acc := 0.0
+var _topup_acc := {}         # hero -> top-up spawns owed
+var _swarm_turn := 0
 const TOPUP_RATE := 10.0     # monsters a second while under a wave's minimum
 var _swarm_minute := -1
 var _swarm_dir := 0.0
@@ -525,7 +526,7 @@ func _wave_tick(delta: float, hp_mul: float, speed_mul: float, elite_chance: flo
 	var total := 0.0
 	for r in roles:
 		total += Db.ROLE_WEIGHTS[r]
-	var spawn_one := func():
+	var spawn_one := func(h):
 		var pick := randf() * total
 		var k: String = cast[roles[-1]]
 		for r in roles:
@@ -533,22 +534,39 @@ func _wave_tick(delta: float, hp_mul: float, speed_mul: float, elite_chance: flo
 			if pick <= 0.0:
 				k = cast[r]
 				break
-		enemies.spawn(k, _offscreen_point(Db.ENEMIES[k].radius), hp_mul, false, speed_mul, randf() < elite_chance)
-	# Under the minimum: top up fast, but as a stream (TOPUP_RATE a second)
-	# so a new wave never lands as an instant ring around you.
-	var short := mini(int(wave.min * scale) - enemies.count(), cap - enemies.count())
-	if short > 0:
-		_topup_acc = minf(_topup_acc + TOPUP_RATE * delta, float(short))
-		while _topup_acc >= 1.0:
-			_topup_acc -= 1.0
-			spawn_one.call()
-	else:
-		_topup_acc = 0.0
+		enemies.spawn(k, _offscreen_point(Db.ENEMIES[k].radius, NAN, h), hp_mul, false, speed_mul, randf() < elite_chance)
+	# Co-op: every hero gets their own share of the wave, counted from the
+	# monsters around *them*, so players far apart each get a fair fight
+	# instead of one drawing the whole crowd while the other walks alone.
+	var alive := living_heroes()
+	if alive.is_empty():
+		alive = [player]
+	var near := _monsters_near(alive)
+	var share: float = wave.min * scale / alive.size()
+	var neediest := 0
+	for hi in alive.size():
+		var h = alive[hi]
+		if near[hi] < near[neediest]:
+			neediest = hi
+		# Under the minimum: top up fast, but as a stream (TOPUP_RATE a
+		# second) so a new wave never lands as an instant ring around you.
+		var short := mini(int(share) - near[hi], cap - enemies.count())
+		var acc: float = _topup_acc.get(h, 0.0)
+		if short > 0:
+			acc = minf(acc + TOPUP_RATE * delta, float(short))
+			while acc >= 1.0:
+				acc -= 1.0
+				near[hi] += 1
+				spawn_one.call(h)
+		else:
+			acc = 0.0
+		_topup_acc[h] = acc
+	# The steady trickle goes to whoever has the fewest around them.
 	_wave_acc += wave.rate * scale * delta
 	while _wave_acc >= 1.0:
 		_wave_acc -= 1.0
 		if enemies.count() < cap:
-			spawn_one.call()
+			spawn_one.call(alive[neediest])
 	# The minute's swarm: one-hit fodder pouring in from one side (or two).
 	if wave.has("swarm") and wi != _swarm_minute and not attract:
 		_swarm_minute = wi
@@ -565,8 +583,32 @@ func _wave_tick(delta: float, hp_mul: float, speed_mul: float, elite_chance: flo
 			if enemies.count() < cap:
 				var fodder: String = cast.swarm
 				var side := _swarm_dir + (PI if _swarm_sides == 2 and randi() % 2 == 0 else 0.0)
-				var at := _offscreen_point(Db.ENEMIES[fodder].radius, side + randf_range(-0.6, 0.6))
+				# Shared out evenly: each hero gets their part of the swarm.
+				_swarm_turn = (_swarm_turn + 1) % alive.size()
+				var at := _offscreen_point(Db.ENEMIES[fodder].radius, side + randf_range(-0.6, 0.6), alive[_swarm_turn])
 				enemies.spawn(fodder, at, hp_mul * SWARM_HP, false, speed_mul, false, 0.5)
+
+## How many monsters are around each hero (each monster counted once, for
+## the hero it's nearest, and only within about a screen of them).
+func _monsters_near(alive: Array) -> Array:
+	var out := []
+	out.resize(alive.size())
+	out.fill(0)
+	var reach := []
+	for h in alive:
+		var r: float = h.view_size.length() * 0.75
+		reach.append(r * r)
+	for i in enemies.count():
+		var best := -1
+		var best_d := INF
+		for hi in alive.size():
+			var d: float = enemies.pos[i].distance_squared_to(alive[hi].position)
+			if d < best_d:
+				best_d = d
+				best = hi
+		if best_d < reach[best]:
+			out[best] += 1
+	return out
 
 ## Dev flag `veteran`: every power-up at max rank (curse left out), for
 ## testing what a built-up profile can do.
@@ -590,9 +632,9 @@ func contact_scale() -> float:
 
 ## Just off a random hero's screen, never inside a grave, tree or building.
 ## `angle` picks the side (NAN: anywhere around).
-func _offscreen_point(r := 8.0, angle := NAN) -> Vector2:
+func _offscreen_point(r := 8.0, angle := NAN, hero = null) -> Vector2:
 	var alive := living_heroes()
-	var h = alive.pick_random() if not alive.is_empty() else player
+	var h = hero if hero != null else (alive.pick_random() if not alive.is_empty() else player)
 	var dist: float = h.view_size.length() * 0.5 + 16.0
 	var p := Vector2.ZERO
 	for attempt in 8:
@@ -1005,6 +1047,17 @@ func _log_status(tag: String) -> void:
 				for id in h.passives: items.append("%s%d" % [id, h.passives[id]])
 				items.sort()
 				print("[inv %s seat%d %s] %s" % [mode, seat, h.char_id, ",".join(items)])
+		if mode == "host":
+			# How the monsters are shared out: within a screen of each hero.
+			var near := []
+			for seat in heroes:
+				var h = heroes[seat]
+				var c := 0
+				for i in enemies.count():
+					if enemies.pos[i].distance_to(h.position) < h.view_size.length() * 0.6:
+						c += 1
+				near.append("seat%d@(%d,%d):%d" % [seat, h.position.x, h.position.y, c])
+			print("[near] ", " ".join(near), " total:", enemies.count())
 	var inv := []
 	for id in player.weapons: inv.append("%s%d" % [id, player.weapons[id].level])
 	for id in player.passives: inv.append("%s%d" % [id, player.passives[id]])

@@ -231,7 +231,7 @@ func _smart_dir() -> Vector2:
 		var s := 0.0
 		for i in e.query_circle(at, 60.0):
 			var d := maxf(at.distance_to(e.pos[i]) - e.radius[i], 4.0)
-			s -= e.damage[i] / (d * d)
+			s -= (e.damage[i] if i < e.damage.size() else 10.0) / (d * d)  # guests don't get damage synced
 		for b in e.bullets:
 			var d := maxf(at.distance_to(b.pos), 4.0)
 			if d < 60.0:
