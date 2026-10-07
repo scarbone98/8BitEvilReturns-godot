@@ -25,6 +25,53 @@ func _ready() -> void:
 	pause.focus_mode = FOCUS_NONE
 	pause.pressed.connect(func(): pause_pressed.emit())
 	add_child(pause)
+	_build_spectate_bar()
+
+# ---------------------------------------------------------------- Spectating
+
+var _spec_bar: Control
+var _spec_name: Label
+
+## Co-op, while you're down: who you're watching, with arrows to cycle.
+func _build_spectate_bar() -> void:
+	var back := PanelContainer.new()  # a dark strip so the text reads over any floor
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.03, 0.01, 0.06, 0.75)
+	sb.content_margin_left = 4; sb.content_margin_right = 4
+	sb.content_margin_top = 3; sb.content_margin_bottom = 3
+	back.add_theme_stylebox_override("panel", sb)
+	back.set_anchors_and_offsets_preset(PRESET_CENTER_BOTTOM)
+	back.offset_left = -114; back.offset_right = 114
+	back.offset_top = -67; back.offset_bottom = -37
+	back.mouse_filter = MOUSE_FILTER_IGNORE
+	var bar := HBoxContainer.new()
+	bar.alignment = BoxContainer.ALIGNMENT_CENTER
+	bar.add_theme_constant_override("separation", 6)
+	var arrow := func(text: String, dir: int) -> Button:
+		var b := UI.button(text, func(): run.spectate_next(dir), 22)
+		b.custom_minimum_size.x = 28
+		b.focus_mode = FOCUS_NONE
+		return b
+	bar.add_child(arrow.call("<", -1))
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 1)
+	col.add_child(UI.label("YOU'RE DOWN - WATCHING", 6, UI.RED))
+	_spec_name = UI.label("", 8, UI.GOLD)
+	_spec_name.clip_text = true
+	col.add_child(_spec_name)
+	bar.add_child(col)
+	bar.add_child(arrow.call(">", 1))
+	back.add_child(bar)
+	back.visible = false
+	_spec_bar = back
+	add_child(back)
+
+func _spectate_ui() -> void:
+	var h = run.spectating
+	_spec_bar.visible = h != null and not run.ended
+	if h != null:
+		_spec_name.text = h.player_name if h.player_name != "" else Db.CHARACTERS[h.char_id].name
 
 var _toasts: Array = []  # [text, colour, seconds left]
 var _banner := ""
@@ -40,6 +87,7 @@ func toast(text: String, col := UI.PALE) -> void:
 		_toasts.pop_front()
 
 func _process(d: float) -> void:
+	_spectate_ui()
 	for t in _toasts:
 		t[2] -= d
 	_toasts = _toasts.filter(func(t): return t[2] > 0.0)

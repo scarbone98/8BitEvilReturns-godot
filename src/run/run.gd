@@ -447,18 +447,69 @@ func _hero_positions() -> Array:
 	return heroes.values().map(func(h): return h.position)
 
 func _follow_camera() -> void:
+	_spectate_tick()
 	# Follow exactly, like the original: no rounding at all. (Rounding to world
 	# pixels made the view hop; rounding to screen pixels made the floor move
 	# in uneven 1-2 pixel steps under a still hero.)
-	camera.position = player.position
+	camera.position = spectating.position if spectating != null else player.position
 	camera.force_update_scroll()  # apply this frame, so the view never lags the hero
 	obstacles.update_around(_hero_positions())
 	# Snap the tiled ground to its tile size so it never runs out.
-	ground.position = (player.position / Vector2(640, 400)).floor() * Vector2(640, 400)
+	ground.position = (camera.position / Vector2(640, 400)).floor() * Vector2(640, 400)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel") and not ended and _modal == null and not attract:
 		_show_pause()
+	elif spectating != null and _modal == null:
+		if event.is_action_pressed("move_left") or event.is_action_pressed("ui_left"):
+			spectate_next(-1)
+		elif event.is_action_pressed("move_right") or event.is_action_pressed("ui_right"):
+			spectate_next(1)
+
+# ---------------------------------------------------------------- Spectating
+
+## Co-op: while our hero is down, the camera follows a teammate who's still
+## up (cycle with spectate_next). When we're revived at the team level-up,
+## we come back next to whoever we were watching.
+var spectating = null
+var _was_down := false
+
+func _spectate_tick() -> void:
+	var down: bool = player.dead and mode != "solo" and not is_server()
+	if down:
+		if spectating == null or spectating.dead or not heroes.values().has(spectating):
+			spectating = null
+			spectate_next(1)
+			if autoplay and spectating != null:
+				print("[spectate] down at (%d,%d), watching seat %d" % [player.position.x, player.position.y, _seat_of(spectating)])
+	elif _was_down and spectating != null:
+		# Back up: join the one we were watching. (A guest owns its position
+		# and sends it on, so the host follows.)
+		var at: Vector2 = spectating.position + Vector2.RIGHT.rotated(randf() * TAU) * 14.0
+		player.position = obstacles.free_spot(at, 6.0)
+		if autoplay:
+			print("[spectate] back up at (%d,%d) next to seat %d at (%d,%d)" % [player.position.x, player.position.y, _seat_of(spectating), spectating.position.x, spectating.position.y])
+		spectating = null
+	elif not down:
+		spectating = null
+	_was_down = down
+
+## Watch the next (dir 1) or previous (-1) teammate who's still up.
+func spectate_next(dir: int) -> void:
+	var seats := heroes.keys()
+	seats.sort()
+	var up := seats.filter(func(s): return heroes[s] != player and not heroes[s].dead and not heroes[s].away)
+	if up.is_empty():
+		spectating = null
+		return
+	var at := up.find(_seat_of(spectating)) if spectating != null else -1
+	spectating = heroes[up[posmod(at + dir, up.size())] if at != -1 else up[0]]
+
+func _seat_of(h) -> int:
+	for s in heroes:
+		if heroes[s] == h:
+			return s
+	return -1
 
 # ---------------------------------------------------------------- Spawning
 
